@@ -5,7 +5,7 @@ import { sniffModelImage } from "./avatars";
 import { readsOrMayJoin } from "./channels";
 import { cardPlace } from "./consultations";
 import { learnTrust, ownWords } from "./context/learn";
-import { changeSkillAsAgent } from "./context/learned-skills";
+import { changeSkillAsAgent, createSkillAsAgent } from "./context/learned-skills";
 import { memoryResult } from "./context/tools";
 import { publishMessageCreated } from "./events";
 import { copyToComputer, type StoredFile } from "./file-pulls";
@@ -30,6 +30,8 @@ import {
 import type { ToolContext, ToolDefinition, ToolOutput, ToolSource } from "./tools/types";
 
 export const OFFER_INSTALL_SKILL_TOOL = "offer_install_skill";
+/** A skill of the agent's own, made when a person asks (ADR 0120, addendum of 2026-11-14). */
+export const CREATE_SKILL_TOOL = "create_skill";
 export const UPDATE_SKILL_FROM_SOURCE_TOOL = "update_skill_from_source";
 /** An install card's `bodyCode` (`chat.body.action_install_skill`), and an update card's (`action_update_skills`). */
 export const INSTALL_SKILL_CARD = "action_install_skill";
@@ -330,6 +332,53 @@ export function createSkillToolSource(
           return carded(
             `${why} (${change.proposalIds.join(", ")}): someone who manages agents accepts it on the card under your reply.${waits} Use your fix in this turn.`,
           );
+        } catch (error) {
+          return failed(error);
+        }
+      },
+    },
+    {
+      name: CREATE_SKILL_TOOL,
+      description:
+        "Create a skill of your own when a person asks you to make one ('transforma isso numa skill', 'make a skill of how you did this'): `name` kebab-case for the kind of task, `description` when to use it, `body` Markdown with the steps first, then the pitfalls, in the person's language. It goes on for you at once and shows in the workspace's Skills, where people undo it or give it to other agents. This is the way to make a skill here: never a repository, a link or your CLI's own skills folder. No credentials or where they are kept: say which key it needs from a person. Add text files to it later with update_skill.",
+      scope: "skills:read",
+      inputSchema: {
+        type: "object",
+        properties: {
+          name: { type: "string", minLength: 1, maxLength: 64, pattern: "^[a-z0-9]+(-[a-z0-9]+)*$" },
+          description: { type: "string", minLength: 1, maxLength: 1024 },
+          body: { type: "string", minLength: 1, maxLength: 50_000 },
+        },
+        required: ["name", "description", "body"],
+        additionalProperties: false,
+      },
+      describe: (input) => ({ title: `Create the skill ${str(input.name)}` }),
+      async execute(input, ctx) {
+        try {
+          const { trust, person } = await learnTrust(ctx);
+          if (!person) {
+            return {
+              content:
+                "Only a person's request makes a skill. Save how you did it with save_how_to: used again and again, it becomes a skill by itself.",
+              isError: true,
+            };
+          }
+          if (trust === "low") {
+            return {
+              content:
+                "This turn read outside content (the web, mail or a connected app), so it can't make a skill: a skill loads as trusted instructions. Show the person the skill's text so they add it in Settings › Skills, or ask them to ask again in a new message.",
+              isError: true,
+            };
+          }
+          const skill = await createSkillAsAgent({ db: ctx.db, judge: deps.judge }, ctx, {
+            name: str(input.name),
+            description: str(input.description),
+            body: str(input.body),
+          });
+          return {
+            content: `Created the skill ${skill.name}, on for you now. It shows in your skills and in Settings › Skills, where people undo it or give it to other agents. Load it with load_skill when a task matches.`,
+            data: { skill: { id: skill.id, name: skill.name, version: skill.version } },
+          };
         } catch (error) {
           return failed(error);
         }

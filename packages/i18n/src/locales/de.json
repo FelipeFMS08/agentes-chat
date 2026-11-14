@@ -3652,6 +3652,7 @@
     },
     "skill": {
       "created": "Das Gelernte in den Skill <b>{{name}}</b> verwandelt",
+      "created_asked": "Den Skill <b>{{name}}</b> erstellt",
       "updated": "Skill <b>{{name}}</b> korrigiert"
     },
     "agent": {
@@ -3756,6 +3757,7 @@
       },
       "skill": {
         "created": "Das Gelernte in Skills verwandelt: {{refs}}",
+        "created_asked": "Skills erstellt: {{refs}}",
         "updated": "Skills korrigiert: {{refs}}"
       },
       "agent": {
@@ -16423,6 +16425,7 @@
         "offeringConnectApp": "Angeboten, eine App zu verbinden",
         "offeringSkill": "Angeboten, einen Skill zu installieren",
         "updatingSkills": "Skills aktualisiert",
+        "creatingSkill": "Skill erstellt",
         "offeringInvites": "Angeboten, Personen einzuladen",
         "proposingAgent": "Einen Agenten vorgeschlagen",
         "askingAgent": "Einen anderen Agenten gefragt",
@@ -16542,6 +16545,7 @@
       "offeringConnectApp": "Vorbereiten einer App-Verbindung",
       "offeringSkill": "Vorbereiten einer Skill-Installation",
       "updatingSkills": "Skills werden aktualisiert",
+      "creatingSkill": "Skill wird erstellt",
       "offeringInvites": "Vorbereiten der Einladungen",
       "proposingAgent": "Vorschlagen eines Agenten",
       "askingAgent": "Fragen eines anderen Agenten",
@@ -16883,6 +16887,10 @@
     "update_skill": {
       "label": "Skill korrigieren",
       "description": "Korrigiert einen geladenen Skill. Beim Skill einer Person wird daraus ein Vorschlag."
+    },
+    "create_skill": {
+      "label": "Skill erstellen",
+      "description": "Macht auf Wunsch einer Person aus dem, was es getan hat, einen eigenen Skill. Erscheint unter Skills, mit Rückgängig."
     },
     "schedule_reminder": {
       "label": "Erinnerung erstellen",

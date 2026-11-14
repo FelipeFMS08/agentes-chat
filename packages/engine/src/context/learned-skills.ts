@@ -2,7 +2,7 @@ import type { BlobStoreResolver, PubSub } from "@agenteschat/adapters";
 import { and, type Database, desc, eq, gt, inArray, isNull, lt, or, rowsOf, schema, sql } from "@agenteschat/db";
 import { recordAgentActions } from "../agent-actions";
 import { runCalls } from "../continuation";
-import { ForbiddenError, NotFoundError, ValidationError } from "../errors";
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../errors";
 import type { Judge } from "../judge";
 import { notifySkillUpdate } from "../notification-producers";
 import { requirePermission } from "../organizations";
@@ -278,6 +278,91 @@ export async function changeSkillAsAgent(
     scripts: scripts.map((f) => f.path),
     ...(why ? { why } : {}),
   };
+}
+
+/**
+ * Skills one agent may create when a person asks (`createSkillAsAgent`), in a run and in a day: each one is a person's
+ * request, so a few cover every real use, and a loop can't fill the workspace's Skills.
+ */
+export const SKILL_CREATE_LIMITS = { perRun: 2, perDay: 6 };
+
+/**
+ * A person asks an agent to turn what it did into a skill (ADR 0120, addendum of 2026-11-14): the skill is the
+ * agent's own, as one promoted from its how-tos (`origin agent`, `owner_agent_id`, on for that agent only, archived when
+ * unused), at once, with a `skill.created` receipt (Desfazer) that says a person asked. People give it to other agents
+ * in Skills. Only a person's run that read nothing from outside (`learnTrust` high): a skill loads as trusted
+ * instructions. The body alone, its text files later through `update_skill`; never credentials or permission rules.
+ */
+export async function createSkillAsAgent(
+  deps: { db: Database; judge?: Judge },
+  ctx: RunCtx & { db: Database },
+  input: { name: string; description: string; body: string },
+): Promise<SkillRow> {
+  const name = input.name.trim().toLowerCase();
+  const description = input.description.trim();
+  const body = input.body.trim();
+  if (!body) throw new ValidationError("Write the skill's body: the steps first, then the pitfalls.");
+  validateSkill({ name, description, body });
+  if (looksLikeSecret(`${description}\n${body}`))
+    throw new ValidationError("This looks like a credential, so it can't go in a skill.");
+  const [taken] = await ctx.db
+    .select({ id: skills.id, deletedAt: skills.deletedAt })
+    .from(skills)
+    .where(and(eq(skills.orgId, ctx.orgId), eq(skills.slug, name)));
+  if (taken)
+    throw new ConflictError(
+      taken.deletedAt
+        ? `A removed skill keeps the name ${name}: pick another name.`
+        : `A skill named ${name} already exists here: load it and fix it with update_skill, or pick another name.`,
+    );
+  if (await changesPermissions(deps.judge, ctx.orgId, `${description}\n${body}`))
+    throw new ValidationError("A skill can't change permissions or approvals.");
+  const [made] = await ctx.db
+    .select({
+      run: sql<number>`count(*) filter (where ${agentActions.runId} = ${ctx.runId})::int`,
+      day: sql<number>`count(*)::int`,
+    })
+    .from(agentActions)
+    .where(
+      and(
+        eq(agentActions.orgId, ctx.orgId),
+        eq(agentActions.agentId, ctx.agentId),
+        eq(agentActions.kind, "skill.created"),
+        gt(agentActions.createdAt, new Date(Date.now() - 24 * 3600_000)),
+      ),
+    );
+  if ((made?.run ?? 0) >= SKILL_CREATE_LIMITS.perRun)
+    throw new ValidationError("You already made skills in this turn: put the rest in one of them with update_skill.");
+  if ((made?.day ?? 0) >= SKILL_CREATE_LIMITS.perDay)
+    throw new ValidationError("You made enough skills today: save this one with save_how_to and make it tomorrow.");
+  return ctx.db.transaction(async (tx) => {
+    const db = tx as unknown as Database;
+    const [skill] = await db
+      .insert(skills)
+      .values({
+        orgId: ctx.orgId,
+        slug: name,
+        name,
+        description,
+        body,
+        source: "manual",
+        origin: "agent",
+        ownerAgentId: ctx.agentId,
+      })
+      .returning();
+    if (!skill) throw new Error("skill insert returned nothing");
+    await db.insert(agentSkills).values({ orgId: ctx.orgId, agentId: ctx.agentId, skillId: skill.id, enabled: true });
+    await recordAgentActions(db, ctx, [
+      {
+        kind: "skill.created",
+        target: { type: "skill", id: skill.id, title: name },
+        params: { name, asked: true },
+        before: null,
+        after: { skillId: skill.id, noteIds: [] },
+      },
+    ]);
+    return skill;
+  });
 }
 
 /**

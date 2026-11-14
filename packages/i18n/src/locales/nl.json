@@ -3653,6 +3653,7 @@
     },
     "skill": {
       "created": "Wat ik leerde omgezet in de skill <b>{{name}}</b>",
+      "created_asked": "De skill <b>{{name}}</b> gemaakt",
       "updated": "Skill <b>{{name}}</b> verbeterd"
     },
     "agent": {
@@ -3757,6 +3758,7 @@
       },
       "skill": {
         "created": "Wat ik leerde omgezet in de skills {{refs}}",
+        "created_asked": "De skills {{refs}} gemaakt",
         "updated": "Skills verbeterd: {{refs}}"
       },
       "agent": {
@@ -16492,6 +16494,7 @@
         "offeringConnectApp": "Aangeboden een app te koppelen",
         "offeringSkill": "Aangeboden een skill te installeren",
         "updatingSkills": "Skills bijgewerkt",
+        "creatingSkill": "Skill gemaakt",
         "offeringInvites": "Aangeboden mensen uit te nodigen",
         "proposingAgent": "Een agent voorgesteld",
         "askingAgent": "Een andere agent iets gevraagd",
@@ -16611,6 +16614,7 @@
       "offeringConnectApp": "een app klaar aan het zetten om te koppelen",
       "offeringSkill": "een skill klaarzetten om te installeren",
       "updatingSkills": "skills bijwerken",
+      "creatingSkill": "skill maken",
       "offeringInvites": "uitnodigingen klaar aan het zetten",
       "proposingAgent": "een agent aan het voorstellen",
       "askingAgent": "een andere agent iets aan het vragen",
@@ -16953,6 +16957,10 @@
     "update_skill": {
       "label": "Skill verbeteren",
       "description": "Verbetert een geladen skill. Bij een skill van een mens wordt het een voorstel."
+    },
+    "create_skill": {
+      "label": "Skill maken",
+      "description": "Maakt van wat het deed een eigen skill als iemand erom vraagt. Staat in Skills, met Ongedaan maken."
     },
     "schedule_reminder": {
       "label": "Herinnering maken",

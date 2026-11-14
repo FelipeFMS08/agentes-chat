@@ -3773,6 +3773,7 @@
     },
     "skill": {
       "created": "Convertí lo que aprendí en la habilidad <b>{{name}}</b>",
+      "created_asked": "Creé la habilidad <b>{{name}}</b>",
       "updated": "Corregí la habilidad <b>{{name}}</b>"
     },
     "agent": {
@@ -3878,6 +3879,7 @@
       },
       "skill": {
         "created": "Convertí lo que aprendí en las habilidades {{refs}}",
+        "created_asked": "Creé las habilidades {{refs}}",
         "updated": "Corregí las habilidades {{refs}}"
       },
       "agent": {
@@ -16889,6 +16891,7 @@
         "offeringConnectApp": "Ofreció conectar una app",
         "offeringSkill": "Ofreció instalar una habilidad",
         "updatingSkills": "Actualizó habilidades",
+        "creatingSkill": "Creó una habilidad",
         "offeringInvites": "Ofreció invitar a personas",
         "proposingAgent": "Propuso un agente",
         "askingAgent": "Le preguntó a otro agente",
@@ -17008,6 +17011,7 @@
       "offeringConnectApp": "preparando una app para conectar",
       "offeringSkill": "preparando una habilidad para instalar",
       "updatingSkills": "actualizando habilidades",
+      "creatingSkill": "creando una habilidad",
       "offeringInvites": "preparando las invitaciones",
       "proposingAgent": "proponiendo un agente",
       "askingAgent": "preguntándole a otro agente",
@@ -17353,6 +17357,10 @@
     "update_skill": {
       "label": "Corregir habilidad",
       "description": "Corrige una habilidad que cargó. La habilidad de una persona se convierte en una propuesta."
+    },
+    "create_skill": {
+      "label": "Crear habilidad",
+      "description": "Convierte lo que hizo en una habilidad propia cuando una persona lo pide. Aparece en Habilidades, con Deshacer."
     },
     "schedule_reminder": {
       "label": "Crear recordatorio",

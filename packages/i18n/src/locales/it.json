@@ -3779,6 +3779,7 @@
     },
     "skill": {
       "created": "Ho trasformato ciò che ho imparato nella skill <b>{{name}}</b>",
+      "created_asked": "Ho creato la skill <b>{{name}}</b>",
       "updated": "Ho corretto la skill <b>{{name}}</b>"
     },
     "agent": {
@@ -3884,6 +3885,7 @@
       },
       "skill": {
         "created": "Ho trasformato ciò che ho imparato nelle skill {{refs}}",
+        "created_asked": "Ho creato le skill {{refs}}",
         "updated": "Ho corretto le skill {{refs}}"
       },
       "agent": {
@@ -16977,6 +16979,7 @@
         "offeringConnectApp": "Ha proposto di collegare un'app",
         "offeringSkill": "Ha proposto di installare una skill",
         "updatingSkills": "Ha aggiornato le skill",
+        "creatingSkill": "Ha creato una skill",
         "offeringInvites": "Ha proposto di invitare persone",
         "proposingAgent": "Ha proposto un agente",
         "askingAgent": "Ha chiesto a un altro agente",
@@ -17096,6 +17099,7 @@
       "offeringConnectApp": "preparando il collegamento di un'app",
       "offeringSkill": "preparando l'installazione di una skill",
       "updatingSkills": "aggiornando le skill",
+      "creatingSkill": "creando una skill",
       "offeringInvites": "preparando gli inviti",
       "proposingAgent": "proponendo un agente",
       "askingAgent": "chiedendo a un altro agente",
@@ -17442,6 +17446,10 @@
     "update_skill": {
       "label": "Correggi skill",
       "description": "Corregge una skill che ha caricato. La skill di una persona diventa una proposta."
+    },
+    "create_skill": {
+      "label": "Crea skill",
+      "description": "Trasforma ciò che ha fatto in una skill sua quando una persona lo chiede. Compare in Skill, con Annulla."
     },
     "schedule_reminder": {
       "label": "Crea promemoria",

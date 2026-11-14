@@ -3943,6 +3943,8 @@ export const en = {
     },
     skill: {
       created: "Turned what I learned into the skill <b>{{name}}</b>",
+      /** Made when a person asked (`create_skill`), not from its how-tos. */
+      created_asked: "Created the skill <b>{{name}}</b>",
       updated: "Fixed the skill <b>{{name}}</b>",
     },
     /** A teammate's settings changed from the right hand's card, by the person who clicked Aplicar (ADR 0137). */
@@ -4057,6 +4059,7 @@ export const en = {
       },
       skill: {
         created: "Turned what I learned into the skills {{refs}}",
+        created_asked: "Created the skills {{refs}}",
         updated: "Fixed the skills {{refs}}",
       },
       agent: {
@@ -16749,6 +16752,7 @@ export const en = {
         offeringConnectApp: "Offered to connect an app",
         offeringSkill: "Offered to install a skill",
         updatingSkills: "Updated skills",
+        creatingSkill: "Created a skill",
         offeringInvites: "Offered to invite people",
         proposingAgent: "Proposed an agent",
         askingAgent: "Asked another agent",
@@ -16869,6 +16873,7 @@ export const en = {
       offeringConnectApp: "getting an app ready to connect",
       offeringSkill: "getting a skill ready to install",
       updatingSkills: "updating skills",
+      creatingSkill: "creating a skill",
       offeringInvites: "getting invitations ready",
       proposingAgent: "proposing an agent",
       askingAgent: "asking another agent",
@@ -17254,6 +17259,10 @@ export const en = {
     update_skill: {
       label: "Fix skill",
       description: "Fixes a skill it loaded. A person's skill becomes a proposal.",
+    },
+    create_skill: {
+      label: "Create skill",
+      description: "Turns what it did into a skill of its own when a person asks. Shows in Skills, with Undo.",
     },
     schedule_reminder: {
       label: "Create reminder",

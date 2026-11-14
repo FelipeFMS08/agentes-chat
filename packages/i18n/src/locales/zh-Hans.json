@@ -3519,6 +3519,7 @@
     },
     "skill": {
       "created": "把学到的内容整理成了技能 <b>{{name}}</b>",
+      "created_asked": "创建了技能 <b>{{name}}</b>",
       "updated": "修正了技能 <b>{{name}}</b>"
     },
     "agent": {
@@ -3622,6 +3623,7 @@
       },
       "skill": {
         "created": "把学到的内容整理成了技能 {{refs}}",
+        "created_asked": "创建了技能 {{refs}}",
         "updated": "修正了技能 {{refs}}"
       },
       "agent": {
@@ -15920,6 +15922,7 @@
         "offeringConnectApp": "提议连接一个应用",
         "offeringSkill": "提议安装一个技能",
         "updatingSkills": "更新了技能",
+        "creatingSkill": "创建了技能",
         "offeringInvites": "提议邀请成员",
         "proposingAgent": "提议了智能体",
         "askingAgent": "询问了另一个智能体",
@@ -16039,6 +16042,7 @@
       "offeringConnectApp": "准备连接应用",
       "offeringSkill": "准备安装技能",
       "updatingSkills": "正在更新技能",
+      "creatingSkill": "正在创建技能",
       "offeringInvites": "准备邀请",
       "proposingAgent": "提议智能体",
       "askingAgent": "询问另一个智能体",
@@ -16377,6 +16381,10 @@
     "update_skill": {
       "label": "修正技能",
       "description": "修正它加载过的技能。成员的技能会变成一条提议。"
+    },
+    "create_skill": {
+      "label": "创建技能",
+      "description": "有人要求时，把做过的事变成自己的技能。显示在技能中，可撤销。"
     },
     "schedule_reminder": {
       "label": "创建提醒",

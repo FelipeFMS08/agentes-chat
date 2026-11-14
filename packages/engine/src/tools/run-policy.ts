@@ -260,6 +260,7 @@ const INTERNAL_BY_NAME: Readonly<Record<string, InternalArea>> = {
   // Their scope only says the agent may read skills: these rewrite one.
   update_skill: "skills",
   update_skill_from_source: "skills",
+  create_skill: "skills",
   // Boards and widgets for the person behind the run (ADR 0135 §10): private until the person widens them.
   create_dashboard: "dashboards",
   create_widget: "dashboards",

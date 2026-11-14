@@ -3899,6 +3899,7 @@
     },
     "skill": {
       "created": "Zamieniono zdobytą wiedzę w umiejętność <b>{{name}}</b>",
+      "created_asked": "Utworzono umiejętność <b>{{name}}</b>",
       "updated": "Poprawiono umiejętność <b>{{name}}</b>"
     },
     "agent": {
@@ -4005,6 +4006,7 @@
       },
       "skill": {
         "created": "Zamieniono zdobytą wiedzę w umiejętności {{refs}}",
+        "created_asked": "Utworzono umiejętności {{refs}}",
         "updated": "Poprawiono umiejętności {{refs}}"
       },
       "agent": {
@@ -17510,6 +17512,7 @@
         "offeringConnectApp": "Zaproponowano połączenie aplikacji",
         "offeringSkill": "Zaproponowano instalację umiejętności",
         "updatingSkills": "Zaktualizowano umiejętności",
+        "creatingSkill": "Utworzono umiejętność",
         "offeringInvites": "Zaproponowano zaproszenie osób",
         "proposingAgent": "Zaproponowano agenta",
         "askingAgent": "Zapytano innego agenta",
@@ -17629,6 +17632,7 @@
       "offeringConnectApp": "przygotowywanie połączenia aplikacji",
       "offeringSkill": "przygotowywanie instalacji umiejętności",
       "updatingSkills": "aktualizowanie umiejętności",
+      "creatingSkill": "tworzenie umiejętności",
       "offeringInvites": "przygotowywanie zaproszeń",
       "proposingAgent": "proponowanie agenta",
       "askingAgent": "pytanie innego agenta",
@@ -17979,6 +17983,10 @@
     "update_skill": {
       "label": "Popraw umiejętność",
       "description": "Poprawia wczytaną umiejętność. Umiejętność należąca do człowieka staje się propozycją."
+    },
+    "create_skill": {
+      "label": "Utwórz umiejętność",
+      "description": "Na prośbę osoby zamienia to, co zrobił, we własną umiejętność. Widać ją w Umiejętnościach, z Cofnij."
     },
     "schedule_reminder": {
       "label": "Utwórz przypomnienie",

@@ -8920,6 +8920,9 @@
   "agentActions.skill.created": {
     "value": "Turned what I learned into the skill <b>{{name}}</b>"
   },
+  "agentActions.skill.created_asked": {
+    "value": "Created the skill <b>{{name}}</b>"
+  },
   "agentActions.skill.updated": {
     "value": "Fixed the skill <b>{{name}}</b>"
   },
@@ -9162,6 +9165,9 @@
   },
   "agentActions.several.skill.created": {
     "value": "Turned what I learned into the skills {{refs}}"
+  },
+  "agentActions.several.skill.created_asked": {
+    "value": "Created the skills {{refs}}"
   },
   "agentActions.several.skill.updated": {
     "value": "Fixed the skills {{refs}}"
@@ -40107,6 +40113,9 @@
   "chat.work.step.updatingSkills": {
     "value": "Updated skills"
   },
+  "chat.work.step.creatingSkill": {
+    "value": "Created a skill"
+  },
   "chat.work.step.offeringInvites": {
     "value": "Offered to invite people"
   },
@@ -40454,6 +40463,9 @@
   },
   "chat.activity.updatingSkills": {
     "value": "updating skills"
+  },
+  "chat.activity.creatingSkill": {
+    "value": "creating a skill"
   },
   "chat.activity.offeringInvites": {
     "value": "getting invitations ready"
@@ -41273,6 +41285,12 @@
   },
   "builtinTools.update_skill.description": {
     "value": "Fixes a skill it loaded. A person's skill becomes a proposal."
+  },
+  "builtinTools.create_skill.label": {
+    "value": "Create skill"
+  },
+  "builtinTools.create_skill.description": {
+    "value": "Turns what it did into a skill of its own when a person asks. Shows in Skills, with Undo."
   },
   "builtinTools.schedule_reminder.label": {
     "value": "Create reminder"

@@ -3844,6 +3844,7 @@ export const ptBR = {
     },
     skill: {
       created: "Transformei o que aprendi na skill <b>{{name}}</b>",
+      created_asked: "Criei a skill <b>{{name}}</b>",
       updated: "Corrigi a skill <b>{{name}}</b>",
     },
     agent: {
@@ -3955,6 +3956,7 @@ export const ptBR = {
       },
       skill: {
         created: "Transformei o que aprendi nas skills {{refs}}",
+        created_asked: "Criei as skills {{refs}}",
         updated: "Corrigi as skills {{refs}}",
       },
       agent: {
@@ -16721,6 +16723,7 @@ export const ptBR = {
         offeringConnectApp: "Ofereceu conectar um app",
         offeringSkill: "Ofereceu instalar uma skill",
         updatingSkills: "Atualizou skills",
+        creatingSkill: "Criou uma skill",
         offeringInvites: "Ofereceu convidar pessoas",
         proposingAgent: "Propôs um agente",
         askingAgent: "Perguntou a outro agente",
@@ -16840,6 +16843,7 @@ export const ptBR = {
       offeringConnectApp: "preparando a conexão de um app",
       offeringSkill: "preparando a instalação de uma skill",
       updatingSkills: "atualizando skills",
+      creatingSkill: "criando uma skill",
       offeringInvites: "preparando os convites",
       proposingAgent: "propondo um agente",
       askingAgent: "perguntando a outro agente",
@@ -17222,6 +17226,10 @@ export const ptBR = {
     update_skill: {
       label: "Corrigir skill",
       description: "Corrige uma skill que carregou. A skill de uma pessoa vira proposta.",
+    },
+    create_skill: {
+      label: "Criar skill",
+      description: "Transforma o que fez numa skill própria quando uma pessoa pede. Aparece em Skills, com Desfazer.",
     },
     schedule_reminder: {
       label: "Criar lembrete",

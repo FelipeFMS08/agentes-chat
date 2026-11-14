@@ -3638,6 +3638,7 @@
     },
     "skill": {
       "created": "Öğrendiklerimi <b>{{name}}</b> becerisine dönüştürdüm",
+      "created_asked": "<b>{{name}}</b> becerisini oluşturdum",
       "updated": "<b>{{name}}</b> becerisini düzelttim"
     },
     "agent": {
@@ -3742,6 +3743,7 @@
       },
       "skill": {
         "created": "Öğrendiklerimi becerilere dönüştürdüm: {{refs}}",
+        "created_asked": "Becerileri oluşturdum: {{refs}}",
         "updated": "Becerileri düzelttim: {{refs}}"
       },
       "agent": {
@@ -16354,6 +16356,7 @@
         "offeringConnectApp": "Bir uygulama bağlamayı önerdi",
         "offeringSkill": "Bir beceri yüklemeyi önerdi",
         "updatingSkills": "Becerileri güncelledi",
+        "creatingSkill": "Beceri oluşturdu",
         "offeringInvites": "Kişileri davet etmeyi önerdi",
         "proposingAgent": "Bir ajan önerdi",
         "askingAgent": "Başka bir ajana sordu",
@@ -16473,6 +16476,7 @@
       "offeringConnectApp": "uygulama bağlantısını hazırlıyor",
       "offeringSkill": "bir beceriyi yüklemeye hazırlıyor",
       "updatingSkills": "becerileri güncelliyor",
+      "creatingSkill": "beceri oluşturuyor",
       "offeringInvites": "davetleri hazırlıyor",
       "proposingAgent": "ajan öneriyor",
       "askingAgent": "başka bir ajana soruyor",
@@ -16814,6 +16818,10 @@
     "update_skill": {
       "label": "Beceriyi düzelt",
       "description": "Yüklediği bir beceriyi düzeltir. Bir kişinin becerisiyse öneriye dönüşür."
+    },
+    "create_skill": {
+      "label": "Beceri oluştur",
+      "description": "Biri istediğinde yaptığını kendi becerisine dönüştürür. Beceriler'de görünür, Geri Al ile."
     },
     "schedule_reminder": {
       "label": "Hatırlatıcı oluştur",

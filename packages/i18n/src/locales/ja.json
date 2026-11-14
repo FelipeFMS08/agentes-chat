@@ -3518,6 +3518,7 @@
     },
     "skill": {
       "created": "学んだことをスキル<b>{{name}}</b>にまとめました",
+      "created_asked": "スキル<b>{{name}}</b>を作りました",
       "updated": "スキル<b>{{name}}</b>を修正しました"
     },
     "agent": {
@@ -3621,6 +3622,7 @@
       },
       "skill": {
         "created": "学んだことをスキルにまとめました: {{refs}}",
+        "created_asked": "スキルを作りました: {{refs}}",
         "updated": "スキルを修正しました: {{refs}}"
       },
       "agent": {
@@ -15851,6 +15853,7 @@
         "offeringConnectApp": "アプリの接続を提案しました",
         "offeringSkill": "スキルのインストールを提案しました",
         "updatingSkills": "スキルを更新しました",
+        "creatingSkill": "スキルを作りました",
         "offeringInvites": "メンバーの招待を提案しました",
         "proposingAgent": "エージェントを提案しました",
         "askingAgent": "別のエージェントに質問しました",
@@ -15970,6 +15973,7 @@
       "offeringConnectApp": "アプリの接続を準備中",
       "offeringSkill": "スキルのインストールを準備中",
       "updatingSkills": "スキルを更新中",
+      "creatingSkill": "スキルを作成中",
       "offeringInvites": "招待を準備中",
       "proposingAgent": "エージェントを提案中",
       "askingAgent": "別のエージェントに質問中",
@@ -16307,6 +16311,10 @@
     "update_skill": {
       "label": "スキルを修正",
       "description": "読み込んだスキルを修正します。人が作ったスキルの場合は提案になります。"
+    },
+    "create_skill": {
+      "label": "スキルを作成",
+      "description": "頼まれたときに、やったことを自分のスキルにします。スキルに表示され、元に戻せます。"
     },
     "schedule_reminder": {
       "label": "リマインダーを作成",

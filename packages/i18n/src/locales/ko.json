@@ -3516,6 +3516,7 @@
     },
     "skill": {
       "created": "배운 내용을 스킬 <b>{{name}}</b>(으)로 만들었어요",
+      "created_asked": "스킬 <b>{{name}}</b>을(를) 만들었어요",
       "updated": "스킬 <b>{{name}}</b>을(를) 수정했어요"
     },
     "agent": {
@@ -3619,6 +3620,7 @@
       },
       "skill": {
         "created": "배운 내용을 스킬로 만들었어요: {{refs}}",
+        "created_asked": "스킬을 만들었어요: {{refs}}",
         "updated": "스킬을 수정했어요: {{refs}}"
       },
       "agent": {
@@ -15843,6 +15845,7 @@
         "offeringConnectApp": "앱 연결을 제안했어요",
         "offeringSkill": "스킬 설치를 제안했어요",
         "updatingSkills": "스킬을 업데이트했어요",
+        "creatingSkill": "스킬을 만들었어요",
         "offeringInvites": "사람 초대를 제안했어요",
         "proposingAgent": "에이전트를 제안했어요",
         "askingAgent": "다른 에이전트에게 물었어요",
@@ -15962,6 +15965,7 @@
       "offeringConnectApp": "앱 연결을 준비하는 중",
       "offeringSkill": "스킬 설치를 준비하는 중",
       "updatingSkills": "스킬을 업데이트하는 중",
+      "creatingSkill": "스킬을 만드는 중",
       "offeringInvites": "초대를 준비하는 중",
       "proposingAgent": "에이전트를 제안하는 중",
       "askingAgent": "다른 에이전트에게 묻는 중",
@@ -16299,6 +16303,10 @@
     "update_skill": {
       "label": "스킬 수정",
       "description": "불러온 스킬을 수정해요. 사람이 만든 스킬이라면 제안으로 남겨요."
+    },
+    "create_skill": {
+      "label": "스킬 만들기",
+      "description": "요청을 받으면 한 일을 자신의 스킬로 만들어요. 스킬에 표시되고 실행 취소할 수 있어요."
     },
     "schedule_reminder": {
       "label": "리마인더 만들기",

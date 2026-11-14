@@ -3778,6 +3778,7 @@
     },
     "skill": {
       "created": "J'ai fait de ce que j'ai appris la compétence <b>{{name}}</b>",
+      "created_asked": "J'ai créé la compétence <b>{{name}}</b>",
       "updated": "J'ai corrigé la compétence <b>{{name}}</b>"
     },
     "agent": {
@@ -3883,6 +3884,7 @@
       },
       "skill": {
         "created": "J'ai fait de ce que j'ai appris les compétences {{refs}}",
+        "created_asked": "J'ai créé les compétences {{refs}}",
         "updated": "J'ai corrigé les compétences {{refs}}"
       },
       "agent": {
@@ -16971,6 +16973,7 @@
         "offeringConnectApp": "A proposé de connecter une app",
         "offeringSkill": "A proposé d'installer une compétence",
         "updatingSkills": "A mis à jour des compétences",
+        "creatingSkill": "A créé une compétence",
         "offeringInvites": "A proposé d'inviter des personnes",
         "proposingAgent": "A proposé un agent",
         "askingAgent": "A interrogé un autre agent",
@@ -17090,6 +17093,7 @@
       "offeringConnectApp": "préparation de la connexion d'une app",
       "offeringSkill": "préparation de l'installation d'une compétence",
       "updatingSkills": "mise à jour des compétences",
+      "creatingSkill": "création d'une compétence",
       "offeringInvites": "préparation des invitations",
       "proposingAgent": "proposition d'un agent",
       "askingAgent": "question à un autre agent",
@@ -17436,6 +17440,10 @@
     "update_skill": {
       "label": "Corriger une compétence",
       "description": "Corrige une compétence qu'il a chargée. La compétence d'une personne devient une proposition."
+    },
+    "create_skill": {
+      "label": "Créer une compétence",
+      "description": "Fait de ce qu'il a fait une compétence à lui quand une personne le demande. Apparaît dans Compétences, avec Annuler."
     },
     "schedule_reminder": {
       "label": "Créer un rappel",
