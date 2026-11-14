@@ -76,6 +76,7 @@ import { oauthReturnPath } from "@/lib/desktop";
 import { forgetGithubOrgs, keepGithubOrgs, readGithubOrgs } from "@/lib/github-orgs";
 import { navigateAway } from "@/lib/navigate";
 import { useToast } from "@/lib/toast";
+import { ConnectStdio, emptyStdioDraft } from "./ConnectStdio";
 import { reviewNote, ToolLevelsView, ToolReview, type ToolReviewState } from "./ToolReview";
 
 /**
@@ -256,6 +257,8 @@ function ConnectStep({
   const [how, setHow] = useState<"app" | "account">("app");
   const [url, setUrl] = useState(initialUrl ?? "");
   const [label, setLabel] = useState("");
+  const [transport, setTransport] = useState<"http" | "stdio">(item?.server?.authType === "stdio" ? "stdio" : "http");
+  const [stdioDraft, setStdioDraft] = useState(() => emptyStdioDraft(item?.label));
   const [apiKey, setApiKey] = useState("");
   const [keyOpen, setKeyOpen] = useState(false);
   const [needsKey, setNeedsKey] = useState<Extract<CustomConnectStart, { status: "needs_key" }> | null>(null);
@@ -354,6 +357,19 @@ function ConnectStep({
     }
   };
 
+  const transportTabs = askUrl ? (
+    <Segmented<"http" | "stdio">
+      label={t("connectFlow.local.transport")}
+      value={transport}
+      onValueChange={setTransport}
+      block
+      options={[
+        { value: "http", label: "HTTP" },
+        { value: "stdio", label: t("connectFlow.local.tab") },
+      ]}
+    />
+  ) : null;
+
   const keyForm = (
     <form
       className="cflow__key"
@@ -391,126 +407,149 @@ function ConnectStep({
 
   return (
     <>
-      <Locked when={busy}>
-        <DialogBody className="cflow__body">
-          {def && viaComposio ? (
-            <p className="muted cflow__text">
-              {connectorDescription(t, def)} {composioConnectText(t, def)}
-            </p>
-          ) : def && appOffered ? (
-            <p className="muted cflow__text">{connectorDescription(t, def)}</p>
-          ) : def ? (
-            <p className="muted cflow__text">
-              {connectorDescription(t, def)} {canOAuth && t("connectFlow.oauthHelp", { name: connectorBrand(def) })}
-            </p>
-          ) : viaComposio ? (
-            <p className="muted cflow__text">{t("connectors.composio.via")}</p>
-          ) : fixed ? (
-            <p className="muted cflow__text">{fixed}</p>
-          ) : (
-            <p className="muted cflow__text">{t("connectFlow.customText")}</p>
-          )}
-          {askUrl && (
-            <Field label={t("connectors.serverUrl")} id="cflow-url" example={t("connectFlow.urlHelp")} error={urlError}>
-              <Input
-                value={url}
-                onChange={(e) => {
-                  setUrl(e.target.value);
-                  setNeedsKey(null);
-                }}
-                placeholder="https://"
-                inputMode="url"
-              />
-            </Field>
-          )}
-          {def === null && fixed === null && (
-            <Field label={t("connectFlow.name")} id="cflow-name">
-              <Input
-                value={label}
-                onChange={(e) => setLabel(e.target.value)}
-                placeholder={t("connectFlow.namePlaceholder")}
-              />
-            </Field>
-          )}
-          {githubOrgs && <GithubOrgs />}
-          {appOffered && (
-            <OptionList
-              aria-label={t("connectFlow.github.how")}
-              value={how}
-              onValueChange={setHow}
-              options={[
-                {
-                  value: "app",
-                  title: t("connectFlow.github.app"),
-                  tag: t("connectFlow.github.recommended"),
-                  description: t("connectFlow.github.appText"),
-                },
-                {
-                  value: "account",
-                  title: t("connectFlow.github.account"),
-                  description: t("connectFlow.github.accountText"),
-                },
-              ]}
-            />
-          )}
-          {!viaApp && canOAuth && canKey && (
-            <details
-              className="cflow__more"
-              open={keyOpen}
-              onToggle={(e) => setKeyOpen((e.currentTarget as HTMLDetailsElement).open)}
-            >
-              <summary>{t("connectFlow.withKey")}</summary>
-              {keyForm}
-            </details>
-          )}
-          {!viaApp && !canOAuth && canKey && keyForm}
-        </DialogBody>
-      </Locked>
-      <DialogFooter
-        bar
-        note={
-          connect.isPending
-            ? steps
-            : viaApp
-              ? t("connectFlow.github.appNote")
-              : replacing
-                ? t(unchecked ? "connectFlow.replaceUnchecked" : "connectFlow.replace")
-                : again && unchecked
-                  ? t("connectFlow.newAccountUnchecked")
-                  : t("connectFlow.allCanUse")
-        }
-      >
-        <Button onClick={onClose}>{t("common.cancel")}</Button>
-        {viaApp ? (
-          <Button variant="primary" disabled={busy} loading={installApp.isPending} onClick={startApp}>
-            {t("githubApp.install")}
-          </Button>
-        ) : canKey && (keyOpen || !canOAuth) ? (
-          <Button
-            variant="primary"
-            disabled={busy}
-            loading={(withKey.isPending || connect.isPending) && touched === "key"}
-            onClick={submitKey}
+      {transport === "stdio" ? (
+        <ConnectStdio
+          tabs={transportTabs}
+          connectionId={connectionId}
+          initialName={item?.label}
+          draft={stdioDraft}
+          onDraftChange={setStdioDraft}
+          returnTo={back}
+          onClose={onClose}
+          onConnected={(server) =>
+            done(fromServer(server, catalog.data?.connectors ?? []), connectionId ? "reconnected" : "connected")
+          }
+        />
+      ) : (
+        <>
+          <Locked when={busy}>
+            <DialogBody className="cflow__body">
+              {transportTabs}
+              {def && viaComposio ? (
+                <p className="muted cflow__text">
+                  {connectorDescription(t, def)} {composioConnectText(t, def)}
+                </p>
+              ) : def && appOffered ? (
+                <p className="muted cflow__text">{connectorDescription(t, def)}</p>
+              ) : def ? (
+                <p className="muted cflow__text">
+                  {connectorDescription(t, def)} {canOAuth && t("connectFlow.oauthHelp", { name: connectorBrand(def) })}
+                </p>
+              ) : viaComposio ? (
+                <p className="muted cflow__text">{t("connectors.composio.via")}</p>
+              ) : fixed ? (
+                <p className="muted cflow__text">{fixed}</p>
+              ) : (
+                <p className="muted cflow__text">{t("connectFlow.customText")}</p>
+              )}
+              {askUrl && (
+                <Field
+                  label={t("connectors.serverUrl")}
+                  id="cflow-url"
+                  example={t("connectFlow.urlHelp")}
+                  error={urlError}
+                >
+                  <Input
+                    value={url}
+                    onChange={(e) => {
+                      setUrl(e.target.value);
+                      setNeedsKey(null);
+                    }}
+                    placeholder="https://"
+                    inputMode="url"
+                  />
+                </Field>
+              )}
+              {def === null && fixed === null && (
+                <Field label={t("connectFlow.name")} id="cflow-name">
+                  <Input
+                    value={label}
+                    onChange={(e) => setLabel(e.target.value)}
+                    placeholder={t("connectFlow.namePlaceholder")}
+                  />
+                </Field>
+              )}
+              {githubOrgs && <GithubOrgs />}
+              {appOffered && (
+                <OptionList
+                  aria-label={t("connectFlow.github.how")}
+                  value={how}
+                  onValueChange={setHow}
+                  options={[
+                    {
+                      value: "app",
+                      title: t("connectFlow.github.app"),
+                      tag: t("connectFlow.github.recommended"),
+                      description: t("connectFlow.github.appText"),
+                    },
+                    {
+                      value: "account",
+                      title: t("connectFlow.github.account"),
+                      description: t("connectFlow.github.accountText"),
+                    },
+                  ]}
+                />
+              )}
+              {!viaApp && canOAuth && canKey && (
+                <details
+                  className="cflow__more"
+                  open={keyOpen}
+                  onToggle={(e) => setKeyOpen((e.currentTarget as HTMLDetailsElement).open)}
+                >
+                  <summary>{t("connectFlow.withKey")}</summary>
+                  {keyForm}
+                </details>
+              )}
+              {!viaApp && !canOAuth && canKey && keyForm}
+            </DialogBody>
+          </Locked>
+          <DialogFooter
+            bar
+            note={
+              connect.isPending
+                ? steps
+                : viaApp
+                  ? t("connectFlow.github.appNote")
+                  : replacing
+                    ? t(unchecked ? "connectFlow.replaceUnchecked" : "connectFlow.replace")
+                    : again && unchecked
+                      ? t("connectFlow.newAccountUnchecked")
+                      : t("connectFlow.allCanUse")
+            }
           >
-            {t("connectors.saveKey")}
-          </Button>
-        ) : (
-          canOAuth && (
-            <Button
-              variant="primary"
-              disabled={busy}
-              loading={(connect.isPending || oauth.isPending) && touched === "oauth"}
-              onClick={startOAuth}
-            >
-              {viaComposio
-                ? t("connectFlow.continueInComposio")
-                : def
-                  ? t("connectFlow.continueIn", { name: connectorBrand(def) })
-                  : t("connectors.connect")}
-            </Button>
-          )
-        )}
-      </DialogFooter>
+            <Button onClick={onClose}>{t("common.cancel")}</Button>
+            {viaApp ? (
+              <Button variant="primary" disabled={busy} loading={installApp.isPending} onClick={startApp}>
+                {t("githubApp.install")}
+              </Button>
+            ) : canKey && (keyOpen || !canOAuth) ? (
+              <Button
+                variant="primary"
+                disabled={busy}
+                loading={(withKey.isPending || connect.isPending) && touched === "key"}
+                onClick={submitKey}
+              >
+                {t("connectors.saveKey")}
+              </Button>
+            ) : (
+              canOAuth && (
+                <Button
+                  variant="primary"
+                  disabled={busy}
+                  loading={(connect.isPending || oauth.isPending) && touched === "oauth"}
+                  onClick={startOAuth}
+                >
+                  {viaComposio
+                    ? t("connectFlow.continueInComposio")
+                    : def
+                      ? t("connectFlow.continueIn", { name: connectorBrand(def) })
+                      : t("connectors.connect")}
+                </Button>
+              )
+            )}
+          </DialogFooter>
+        </>
+      )}
     </>
   );
 }

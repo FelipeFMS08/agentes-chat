@@ -1334,6 +1334,7 @@ export interface ApiClient {
     ask(orgId: string, proposalId: string): Promise<Proposal>;
   };
   customConnectors: {
+    transports?(orgId: string): Promise<{ stdio: boolean }>;
     list(orgId: string): Promise<CustomServer[]>;
     /**
      * Connects to an https MCP server: a new account, or with `connectionId` a new sign-in for that one
@@ -1343,7 +1344,14 @@ export interface ApiClient {
      */
     connect(
       orgId: string,
-      input: { serverUrl: string; apiKey?: string; label?: string; returnTo: string; connectionId?: string },
+      input: {
+        serverUrl?: string;
+        stdio?: { command: string; args: string[]; cwd?: string; env: Record<string, string> };
+        apiKey?: string;
+        label?: string;
+        returnTo: string;
+        connectionId?: string;
+      },
     ): Promise<CustomConnectStart>;
     /** Lists the server's tools again; new ones come back unclassified. */
     refresh(orgId: string, serverId: string): Promise<CustomServer>;

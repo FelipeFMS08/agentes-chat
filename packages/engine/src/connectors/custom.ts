@@ -55,6 +55,7 @@ import { oauthReturnTo } from "./oauth-return";
 import { seedToolPins } from "./pins";
 import { composioToolkitOf, composioToolName, type McpPreset, presetForServer, serverUrlShown } from "./presets";
 import { type McpServerInfo, refreshServerIcon } from "./server-icon";
+import { connectOverStdio, isStdioMcp, parseStdioConfig, requireStdioMcp, type StdioMcpConfig } from "./stdio";
 
 const { connectorConnections, customTools, oauthStates, agentScopes, agents } = schema;
 
@@ -171,7 +172,7 @@ export interface CustomServerView {
   label: string;
   /** The account as the provider names it ("Acme"), when it says; null otherwise. */
   accountLabel: string | null;
-  authType: "oauth" | "api_key";
+  authType: "oauth" | "api_key" | "stdio";
   /** The server's own icon, served by us (`/api/app/connector-icons/…`); null = a monogram. */
   iconUrl: string | null;
   /** A service through Composio (ADR 0107): its page signs in, and its address means nothing to people. */
@@ -258,7 +259,7 @@ function view(c: ConnectorConnection, tools: ToolRow[], whole = true): CustomSer
     serverUrl: whole ? c.serverUrl : serverUrlShown(c.serverUrl),
     label: c.label,
     accountLabel: c.accountLabel,
-    authType: c.authType === "oauth" ? "oauth" : "api_key",
+    authType: c.authType === "stdio" ? "stdio" : c.authType === "oauth" ? "oauth" : "api_key",
     iconUrl: c.icon,
     ...(composioToolkitOf(c.serverUrl) ? { via: "composio" as const } : {}),
     status: c.status === "needs_reconnect" ? "needs_reconnect" : "active",
@@ -404,7 +405,7 @@ export async function storeCustomConnection(
     serverUrl: string;
     /** The service's name ("Stripe", what the person typed): its first account's name, the others' base. */
     label: string;
-    authType: "oauth" | "api_key" | "none";
+    authType: "oauth" | "api_key" | "none" | "stdio";
     secret: ConnectionSecret | null;
     tokenExpiresAt?: Date | null;
     oauthClientId?: string | null;
@@ -748,11 +749,47 @@ export async function connectCustomServer(
   deps: CustomDeps,
   actorId: string,
   orgId: string,
-  input: { serverUrl: string; apiKey?: string; label?: string; returnTo?: string; connectionId?: string },
+  input: {
+    serverUrl?: string;
+    stdio?: StdioMcpConfig;
+    apiKey?: string;
+    label?: string;
+    returnTo?: string;
+    connectionId?: string;
+  },
 ): Promise<CustomConnectStart> {
   await requirePermission(deps.db, actorId, orgId, "manage_connectors");
+  if (input.stdio !== undefined) {
+    requireStdioMcp(deps.stdioAllowed);
+    if (input.serverUrl || input.apiKey)
+      throw new ValidationError("Choose one MCP transport", "connector.stdio_invalid");
+    const stdio = parseStdioConfig(input.stdio);
+    const existing = input.connectionId ? await loadCustom(deps.db, orgId, input.connectionId) : null;
+    if (existing && !isStdioMcp(existing.serverUrl))
+      throw new ValidationError("Reconnect with the same MCP transport", "connector.stdio_invalid");
+    // Prove initialize and tools/list before persisting a connection or granting access.
+    const session = await connectOverStdio(stdio);
+    try {
+      await session.listTools();
+    } finally {
+      await session.close().catch(() => {});
+    }
+    const { connection, outcome } = await storeCustomConnection(deps, {
+      orgId,
+      actorId,
+      serverUrl: existing?.serverUrl ?? `stdio://${crypto.randomUUID()}`,
+      label: input.label?.trim() || existing?.label || "Local MCP",
+      authType: "stdio",
+      secret: { stdio },
+      connectionId: input.connectionId,
+    });
+    await syncCustomTools(deps, connection);
+    return { status: "connected", server: await serverView(deps.db, orgId, connection.id), outcome };
+  }
+  if (!input.serverUrl) throw new ValidationError("Enter an MCP address", "url.invalid");
   // A service through Composio signs in on Composio's page: its address is never fetched.
-  if (composioToolkitOf(input.serverUrl.trim())) return beginComposioConnect(deps, actorId, orgId, input);
+  if (composioToolkitOf(input.serverUrl.trim()))
+    return beginComposioConnect(deps, actorId, orgId, { ...input, serverUrl: input.serverUrl });
   const url = await assertPublicHttpsUrl(input.serverUrl.trim(), deps.resolveHost);
   const serverUrl = url.toString();
   // Checked before anyone signs in for nothing.

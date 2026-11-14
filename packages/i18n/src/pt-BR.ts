@@ -13272,6 +13272,34 @@ export const ptBR = {
     agentSub: "Por conector e assunto. Por padrão, ações sensíveis pedem aprovação.",
   },
   connectFlow: {
+    local: {
+      transport: "Transporte MCP",
+      tab: "Local · stdio",
+      where:
+        "Executa neste servidor: no seu computador na instalação desktop, dentro do contêiner no Docker. Um computador conectado a outro servidor não é usado aqui.",
+      checking: "Verificando o suporte a MCP local neste servidor…",
+      checkFailed: "Não foi possível verificar o suporte a MCP local. Reabra esta janela para tentar novamente.",
+      disabled:
+        "Programas locais estão desativados. O responsável pela instalação precisa habilitar MCP_STDIO_ENABLED em um servidor próprio confiável e fechado a cadastro público.",
+      command: "Executável",
+      commandHelp:
+        "Nome do programa ou caminho absoluto. Os argumentos ficam abaixo; nenhum comando de shell é interpretado.",
+      args: "Argumentos (lista JSON)",
+      argsHelp:
+        'Uma string por argumento, por exemplo ["server.js", "mcp"]. Caminhos com espaços ficam em uma única string.',
+      cwd: "Diretório de trabalho (opcional)",
+      cwdHelp: "Caminho absoluto no servidor. Em Docker, esse caminho precisa existir dentro do contêiner.",
+      environment: "Variáveis de ambiente",
+      env: "Ambiente (objeto JSON)",
+      envHelp:
+        'Por exemplo {"API_KEY":"…"}. Armazenado criptografado; os segredos do próprio servidor não são herdados.',
+      invalid:
+        "Informe um executável, uma lista JSON de argumentos de texto e um objeto JSON com os valores de ambiente em texto.",
+      failed:
+        "Não foi possível conectar o MCP local. Confira o executável e os caminhos neste servidor e se o programa fala MCP por stdio.",
+      permissions:
+        "Executa como o usuário do sistema do servidor. O acesso às ferramentas e as aprovações são definidos nas próximas etapas.",
+    },
     steps: "Passos",
     step: { "0": "Conectar", "1": "O que faz", "2": "Quem pode usar" },
     connectTitle: "Conectar {{name}}",

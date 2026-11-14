@@ -1,6 +1,7 @@
 import { connectorOAuthApps } from "@agenteschat/config";
 import {
   acceptCustomSuggestion,
+  allowsStdioMcp,
   CONNECTOR_EVENTS,
   type CustomDeps,
   composioConnectorsOf,
@@ -16,8 +17,10 @@ import {
   requirePermission,
   revokeConnection,
   saveCustomTools,
+  stdioConfigSchema,
   ValidationError,
   withComposio,
+  withStdioMcp,
 } from "@agenteschat/engine";
 import { createRoute, z } from "@hono/zod-openapi";
 import { imageFile } from "../../http/image-file";
@@ -48,7 +51,7 @@ const CustomServer = z
     accountLabel: z.string().nullable().openapi({
       description: "The account as the provider names it, when it says (refreshed when tools are listed).",
     }),
-    authType: z.enum(["oauth", "api_key"]),
+    authType: z.enum(["oauth", "api_key", "stdio"]),
     iconUrl: z
       .string()
       .nullable()
@@ -140,7 +143,14 @@ export function customConnectorRoutes(deps: AppDeps) {
     publicUrl: config.PUBLIC_URL,
     http: deps.extras?.http,
     resolveHost: deps.extras?.resolveHost,
-    connect: withComposio(deps.extras?.mcpConnect ?? connectOverHttp, composio),
+    stdioAllowed: allowsStdioMcp(config),
+    connect: withComposio(
+      withStdioMcp(
+        { db, keyWrappers: [adapters.keyWrapper, ...adapters.legacyKeyWrappers], stdioAllowed: allowsStdioMcp(config) },
+        deps.extras?.mcpConnect ?? connectOverHttp,
+      ),
+      composio,
+    ),
     composio,
     judge: deps.extras?.context?.judge,
     blobs: adapters.platformBlobs,
@@ -148,6 +158,22 @@ export function customConnectorRoutes(deps: AppDeps) {
   };
 
   // A server's icon, for the org's members.
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/organizations/{orgId}/connectors/custom-transports",
+      tags,
+      security,
+      summary: "MCP transports enabled by this server's operator",
+      request: { params: OrgParams },
+      responses: { 200: json(z.object({ stdio: z.boolean() })), ...errors },
+    }),
+    async (c) => {
+      await requirePermission(db, c.get("user").id, c.req.valid("param").orgId, "manage_connectors");
+      return c.json({ stdio: allowsStdioMcp(config) }, 200);
+    },
+  );
+
   app.get("/connector-icons/:orgId/:connectionId/:file", async (c) =>
     imageFile(
       await connectorIconFile(
@@ -186,7 +212,8 @@ export function customConnectorRoutes(deps: AppDeps) {
         params: OrgParams,
         body: body(
           z.object({
-            serverUrl: z.string().min(1).max(500),
+            serverUrl: z.string().min(1).max(500).optional(),
+            stdio: stdioConfigSchema.optional(),
             apiKey: z.string().max(2000).optional(),
             label: z.string().max(80).optional(),
             returnTo: z.string().max(500).optional(),

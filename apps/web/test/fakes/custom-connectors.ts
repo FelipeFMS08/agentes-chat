@@ -85,29 +85,31 @@ export function createMockCustomConnectors(
     return s;
   };
   return {
+    transports: async () => ({ stdio: false }),
     list: async (orgId) => clone(list(orgId)),
     connect: async (orgId, input) => {
       log("customConnectors.connect", orgId, { ...input, apiKey: input.apiKey ? "[redacted]" : undefined });
       // Through Composio: its page signs in, back to the callback.
-      if (input.serverUrl.startsWith("https://backend.composio.dev/")) {
+      const serverUrl = input.serverUrl ?? `stdio://${mockId("local-mcp")}`;
+      if (serverUrl.startsWith("https://backend.composio.dev/")) {
         return { status: "oauth", authorizeUrl: "https://composio.example/connect/ca_1?state=s" };
       }
-      const oauth = input.serverUrl.includes("oauth");
-      if (!oauth && !input.apiKey) return { status: "needs_key" };
+      const oauth = serverUrl.includes("oauth");
+      if (!input.stdio && !oauth && !input.apiKey) return { status: "needs_key" };
       if (input.connectionId) {
         return { status: "connected", server: clone(find(orgId, input.connectionId)), outcome: "reconnected" };
       }
       const now = ctx.now();
-      const base = input.label?.trim() || new URL(input.serverUrl).hostname;
+      const base = input.label?.trim() || new URL(serverUrl).hostname;
       const taken = new Set(list(orgId).map((s) => s.label.toLowerCase()));
       let label = base;
       for (let n = 2; taken.has(label.toLowerCase()); n++) label = `${base} ${n}`;
       const server: CustomServer = {
         id: mockId("mcp"),
-        serverUrl: input.serverUrl,
+        serverUrl,
         label,
         accountLabel: null,
-        authType: oauth ? "oauth" : "api_key",
+        authType: input.stdio ? "stdio" : oauth ? "oauth" : "api_key",
         tools: TOOLS.map((t) => tool(t, now)),
         reviewedAt: null,
         createdAt: now.toISOString(),

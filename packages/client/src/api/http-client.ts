@@ -1884,6 +1884,7 @@ export function createHttpApi(options: TransportOptions = {}): HttpApi {
         }),
     },
     customConnectors: {
+      transports: (orgId) => request<{ stdio: boolean }>(`${org(orgId)}/connectors/custom-transports`),
       list: async (orgId) => (await request<{ servers: CustomServer[] }>(`${org(orgId)}/connectors/custom`)).servers,
       connect: (orgId, input) => request<CustomConnectStart>(`${org(orgId)}/connectors/custom`, { json: input }),
       refresh: (orgId, serverId) =>

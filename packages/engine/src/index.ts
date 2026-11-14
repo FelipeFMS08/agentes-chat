@@ -79,6 +79,7 @@ export * from "./connectors/oauth-return";
 export * from "./connectors/pins";
 export * from "./connectors/presets";
 export * from "./connectors/server-icon";
+export * from "./connectors/stdio";
 export * from "./consultations";
 export * from "./context";
 export * from "./context/backfill";
