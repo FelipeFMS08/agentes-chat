@@ -22,14 +22,14 @@ test("the existing MCP dialog keeps both drafts when switching transport tabs", 
     act(async () => {
       fireEvent.click(screen().getByRole("radio", { name: label }));
     });
-  await click("Local · stdio");
+  await click("Programa local · stdio");
   const field = await screen().findByLabelText("Executável");
   await waitFor(() => expect((field as HTMLInputElement).disabled).toBe(false));
   await act(async () => {
     fireEvent.change(field, { target: { value: "my-mcp" } });
   });
   await click("HTTP");
-  await click("Local · stdio");
+  await click("Programa local · stdio");
   expect((screen().getByLabelText("Executável") as HTMLInputElement).value).toBe("my-mcp");
 });
 
@@ -40,7 +40,7 @@ test("disabled stdio explains execution host and cannot submit", async () => {
     org: true,
   });
   await screen().findByText(/Programas locais estão desativados/);
-  expect(screen().getByText(/Executa neste servidor/).textContent).toContain("contêiner");
+  expect(screen().getByText(/Executa onde o agentes/).textContent).toContain("contêiner");
   expect((screen().getByRole("button", { name: "Conectar" }) as HTMLButtonElement).disabled).toBe(true);
 });
 
