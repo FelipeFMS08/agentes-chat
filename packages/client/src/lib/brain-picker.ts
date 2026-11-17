@@ -137,6 +137,10 @@ export function apiPickOptions(t: TFunction, locale: string, choices: [string, M
 export const planAccountOption = (options: readonly BrainPickOption[]) =>
   options.find((o) => !o.disabled && "accountId" in o.pick && Boolean(o.pick.accountId) && o.pick.model === AUTO);
 
+/** That plan account on Automático, where "Quem pensa" offers it: what "Criar um agente com este plano" starts on. */
+export const planAccountOptionOf = (options: readonly BrainPickOption[], accountId: string) =>
+  planAccountOption(options.filter((o) => "accountId" in o.pick && o.pick.accountId === accountId));
+
 /** A plan account option that wasn't among `before` (the options' values when "Conectar uma IA" opened): the one just connected. */
 export const newPlanAccountOption = (options: readonly BrainPickOption[], before: ReadonlySet<string>) =>
   planAccountOption(options.filter((o) => !before.has(o.value)));
@@ -314,7 +318,7 @@ export function brainPickOptions(
         ),
       ),
       ...mine
-        .map((a) => ({ ...a, label: accountTitle(a) }))
+        .map((a) => ({ ...a, label: accountTitle(t, a) }))
         .flatMap((a) =>
           rows(
             { kind, choice, machineId: a.machineId, accountId: a.id, account: a.label },
@@ -576,7 +580,7 @@ export function modelPickerTiles(
   for (const a of view.accounts) {
     const theirs = a.mine || a.ownerId === ownerUserId || a.id === view.account;
     if (!theirs || !runs(a.kind) || (a.status !== "active" && a.id !== view.account)) continue;
-    add(planOfAccount(a), { id: a.id, label: accountTitle(a), usage: a.usage, provider: a.provider });
+    add(planOfAccount(a), { id: a.id, label: accountTitle(t, a), usage: a.usage, provider: a.provider });
   }
   for (const o of view.options) {
     if (o.kind === "model" || !runs(o.kind)) continue;

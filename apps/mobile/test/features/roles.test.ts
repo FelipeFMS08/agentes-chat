@@ -46,9 +46,10 @@ import { SETTINGS_SECTIONS, visibleSections } from "../../src/features/settings/
 import { ICON_NAMES } from "../../src/ui/icons.data";
 import { GROUPED_ROW, TOUCH } from "../../src/ui/rhythm";
 import { ditherPaths, roleMarkFit, roleMarkIcon } from "../../src/ui/role-mark";
+import { pushedByDefault } from "../main-stack";
 import { agent, translator } from "./fixtures";
 
-const APP = join(import.meta.dir, "..", "..", "app", "(app)");
+const APP = join(import.meta.dir, "..", "..", "app", "(app)", "(main)");
 const SRC = join(import.meta.dir, "..", "..", "src");
 const read = (path: string) => readFileSync(join(SRC, path), "utf8");
 
@@ -61,8 +62,16 @@ const AREAS: OrgRoles["areas"] = [
   },
   {
     id: "agents",
-    use: ["talk_to_agents", "assign_work", "manage_routines"],
-    keys: ["talk_to_agents", "assign_work", "manage_routines", "approve_actions", "create_agents", "manage_agents"],
+    use: ["talk_to_agents", "view_all_agents", "assign_work", "manage_routines"],
+    keys: [
+      "talk_to_agents",
+      "view_all_agents",
+      "assign_work",
+      "manage_routines",
+      "approve_actions",
+      "create_agents",
+      "manage_agents",
+    ],
   },
   {
     id: "tools",
@@ -97,6 +106,7 @@ const DEFAULTS = [
   "post",
   "create_channels",
   "talk_to_agents",
+  "view_all_agents",
   "assign_work",
   "pair_computers",
   "own_computers",
@@ -155,17 +165,16 @@ const person = (userId: string, over: Partial<Person> = {}) =>
   ({ userId, name: userId, email: `${userId}@example.com`, role: "member", roleIds: [], ...over }) as Person;
 const owner = { role: "owner", userId: "me" } as const;
 
-describe("Cargos on the phone: where they live (P1, plan §1.4)", () => {
+describe("Cargos on the phone: where they live", () => {
   test("in Configurações › Workspace › Pessoas for who manages roles, each screen in the stack", () => {
     const org = (permissions: string[]) => ({ id: "o", name: "Acme", role: "member" as const, permissions });
     expect(visibleSections(org(["read", "manage_roles"])).map((s) => s.id)).toContain("roles");
     expect(visibleSections(org(["read", "manage_members"])).map((s) => s.id)).not.toContain("roles");
     expect(SETTINGS_SECTIONS.find((s) => s.id === "roles")?.href).toBe("/settings/roles");
-    const layout = readFileSync(join(APP, "_layout.tsx"), "utf8");
     const pages = ["index", "[roleId]", "permissions", "who", "channels", "channel", "agents", "agent"];
     for (const page of [...pages, "people", "add", "look", "rename", "new", "person"]) {
       expect(existsSync(join(APP, "settings", "roles", `${page}.tsx`))).toBe(true);
-      expect(layout).toContain(`name="settings/roles/${page}"`);
+      expect(pushedByDefault(`settings/roles/${page}`)).toBe(true);
     }
     // The levels' screen and the "on the computer" line went with the old page.
     expect(existsSync(join(APP, "settings", "roles", "area.tsx"))).toBe(false);
@@ -181,12 +190,12 @@ describe("Cargos on the phone: where they live (P1, plan §1.4)", () => {
   });
 });
 
-describe("What a cargo adds (P2, P3)", () => {
+describe("What a cargo adds", () => {
   test("its reach line, Todos' without the +, Administrador in words", async () => {
     const t = await translator("pt-BR");
     expect(reachLine(t, suporte, everyone, AREAS)).toBe("+3 permissões · +2 canais · +1 agente");
     expect(reachLine(t, fin, everyone, AREAS)).toBe("+2 permissões · +1 canal · +1 agente");
-    expect(reachLine(t, everyone, everyone, AREAS)).toBe("8 permissões · 4 canais · 3 agentes");
+    expect(reachLine(t, everyone, everyone, AREAS)).toBe("9 permissões · 4 canais · 3 agentes");
     expect(reachLine(t, admin, everyone, AREAS)).toBe("Pode tudo");
     // What Todos already gives adds nothing.
     expect(reachLine(t, role({ id: "x", permissions: ["post"] }), everyone, AREAS)).toBe("Só o que Todos podem");
@@ -204,13 +213,13 @@ describe("What a cargo adds (P2, P3)", () => {
     expect(glanceLine(t, suporte, everyone, AREAS, 3)).toBe("3 pessoas · +3 permissões · +2 canais · +1 agente");
     expect(glanceLine(t, suporte, everyone, AREAS, 0)).toBe("Ninguém · +3 permissões · +2 canais · +1 agente");
     expect(tabValues(t, suporte, everyone, AREAS)).toEqual({ permissions: "+3", channels: "+2", agents: "+1" });
-    expect(tabValues(t, everyone, everyone, AREAS)).toEqual({ permissions: "8", channels: "4", agents: "3" });
+    expect(tabValues(t, everyone, everyone, AREAS)).toEqual({ permissions: "9", channels: "4", agents: "3" });
     expect(tabValues(t, role({ id: "x" }), everyone, AREAS)).toEqual({ permissions: "", channels: "", agents: "" });
     expect(tabValues(t, admin, everyone, AREAS).permissions).toBe("Pode tudo");
   });
 });
 
-describe("Permissões (P4): the Todos trap is gone", () => {
+describe("Permissões: the Todos trap is gone", () => {
   test("one flat list in the web's groups, the computers in their place, Administrador last under Avançado", async () => {
     const t = await translator("pt-BR");
     const groups = permissionGroups(t, suporte, data, owner);
@@ -243,6 +252,11 @@ describe("Permissões (P4): the Todos trap is gone", () => {
     const routines = groups[1]?.rows.find((r) => r.row === "manage_routines");
     expect(routines?.holders.map((r) => r.name)).toEqual(["Admin", "Suporte"]);
     expect(groups[0]?.rows.find((r) => r.row === "post")?.fromEveryone).toBe(false);
+    // On for Todos by default: turning it off is what narrows Equipe to the agents that answer each person.
+    expect(groups[1]?.rows.find((r) => r.row === "view_all_agents")).toMatchObject({
+      title: "Ver todos os agentes",
+      own: 1,
+    });
   });
 
   test("an Administrador cargo shows only Avançado; search finds a title, an ⓘ's words or a group, accents aside", async () => {
@@ -312,7 +326,7 @@ describe("Permissões (P4): the Todos trap is gone", () => {
   });
 });
 
-describe("Quem pode (P5): Todos and the cargos in one call", () => {
+describe("Quem pode: Todos and the cargos in one call", () => {
   const people = [
     person("me", { role: "owner" }),
     person("carla", { roleIds: ["suporte"] }),
@@ -403,7 +417,7 @@ describe("Quem pode (P5): Todos and the cargos in one call", () => {
   });
 });
 
-describe("Canais (P6, P6b)", () => {
+describe("Canais and Quem vê", () => {
   const channel = (over: Partial<Channel> & { id: string }): Channel => ({
     name: over.id,
     topic: "",
@@ -428,7 +442,7 @@ describe("Canais (P6, P6b)", () => {
     expect(channelAudienceLine(t, diretoria, roles)).toBe("Privado");
   });
 
-  test("a tap follows W5's table, and Todos opens a channel to everyone", () => {
+  test("a tap on a channel does what its kind asks, and Todos opens a channel to everyone", () => {
     expect(channelIntent(suporte, general, true)).toEqual({ kind: "fixed" });
     expect(channelIntent(suporte, clientes, false)).toEqual({ kind: "locked" });
     expect(channelIntent(suporte, clientes, true)).toEqual({ kind: "who" });
@@ -481,7 +495,7 @@ describe("Canais (P6, P6b)", () => {
   });
 });
 
-describe("Agentes (P7, P7b)", () => {
+describe("Agentes and Quem fala com", () => {
   const max = agent({ id: "max", name: "Max", ownerUserId: "ana" });
   const people = [person("ana"), person("carla", { roleIds: ["suporte"] }), person("rui")];
   const nameOf = (id: string) => people.find((p) => p.userId === id)?.name;
@@ -505,7 +519,7 @@ describe("Agentes (P7, P7b)", () => {
     expect(agentTicked(everyone, limitedMax)).toBe(false);
   });
 
-  test("a tap follows W7's table: narrow from everyone, drop or add the cargo, open to everyone from Todos", () => {
+  test("a tap on an agent: narrow from everyone, drop or add the cargo, open to everyone from Todos", () => {
     expect(agentIntent(suporte, max, roles)).toEqual({
       kind: "who",
       start: { mode: "people", userIds: [], roleIds: ["admin", "fin"], consultable: true },
@@ -548,7 +562,7 @@ describe("Agentes (P7, P7b)", () => {
     const open = { ...max, audience: { mode: "everyone" as const, userIds: [], roleIds: [], consultable: false } };
     expect(sent(agentIntent(suporte, open, roles))).toBe(false);
     expect(sent(agentIntent(everyone, closed, roles))).toBe(false);
-    // P7b: whatever is picked, Salvar sends the saved switch.
+    // Quem fala com: whatever is picked, Salvar sends the saved switch.
     expect(agentWhoPatch({ mode: "people", userIds: ["rui"], roleIds: [] }, { consultable: false })).toEqual({
       mode: "people",
       userIds: ["rui"],
@@ -579,7 +593,7 @@ describe("Agentes (P7, P7b)", () => {
   });
 });
 
-describe("The order (P2's Ordenar), people and new cargos", () => {
+describe("The order (Cargos' Ordenar), people and new cargos", () => {
   const list = [admin, suporte, fin];
 
   test("▲ and ▼ move a cargo among those below the viewer; OK saves only a changed order", () => {
@@ -652,20 +666,19 @@ describe("The order (P2's Ordenar), people and new cargos", () => {
     });
   });
 
-  test("Membros: a person's sheet offers Cargos; Convidar com este cargo gives new addresses the cargo", () => {
+  test("Membros: a person's sheet offers Cargos; Convidar com este cargo gives every address the cargo", () => {
     expect(memberActions(false, true, true)).toEqual(["dm", "roles", "remove"]);
     expect(memberActions(true, true, true)).toEqual(["roles", "leave"]);
     expect(memberActions(false, false)).toEqual(["dm"]);
-    expect(withAddresses([], "ana@example.com", "suporte")).toEqual([
-      { email: "ana@example.com", valid: true, roleId: "suporte" },
-    ]);
+    expect(withAddresses([], "ana@example.com")).toEqual([{ email: "ana@example.com", valid: true }]);
     expect(read("features/members/MembersPage.tsx")).toContain("roles: () => router.push(rolesHref.person(m.userId))");
     expect(read("features/roles/RoleScreen.tsx")).toContain("params: { role: role.id }");
     const invite = read("features/members/InvitePeople.tsx");
-    expect(invite).toContain("withAddresses(d.addresses, text, d.roleId ?? null)");
-    // The docked button sends what is still in the field (the keyboard up): it gets the cargo too.
-    expect(invite).toContain("const all = withAddresses(draft.addresses, typed, draft.roleId ?? null);");
-    expect(invite).not.toMatch(/withAddresses\(draft\.addresses, typed\)/);
+    // The form starts on the cargo, which brings its channels and agents; every address in the send gets it, the one
+    // still in the field (the docked button is pressed with the keyboard up) too.
+    expect(invite).toContain("roleIds: role ? [role] : [],");
+    expect(invite).toContain("const all = withAddresses(draft.addresses, typed);");
+    expect(invite).toContain("emails: ready.map((a) => a.email),");
   });
 
   test("giving a cargo asks about mailboxes first and sends what was asked; taking one has Desfazer", () => {
@@ -726,7 +739,7 @@ describe("RoleMark: the web's mark on the phone", () => {
       "features/files/ShareSheet.tsx",
       "features/devices/AudienceScreen.tsx",
       "features/agents/setup/SetupStepScreen.tsx",
-      "features/members/JoinRequestsSheet.tsx",
+      "features/roles/parts.tsx",
     ])
       expect({ file, icon: /RoleMark color=\{\w+\.color\} icon=\{\w+\.icon\}/.test(read(file)) }).toEqual({
         file,

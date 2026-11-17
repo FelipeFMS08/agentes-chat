@@ -1,5 +1,6 @@
 import type { TFunction } from "i18next";
 import type {
+  AccountOrderGroup,
   Agent,
   AgentBrainLine,
   AgentUsageSource,
@@ -8,9 +9,10 @@ import type {
   PlanAccountInfo,
   PlanAccountUsage,
   PlanUsage,
+  PlanUseKind,
   PlanWindowParts,
 } from "../api/types";
-import { accountTitle, groupPlans, ownSignInName, ownSignIns, ownSignInTitle } from "./ai-accounts";
+import { accountSub, accountTitle, groupPlans, ownSignInName, ownSignIns, ownSignInTitle } from "./ai-accounts";
 import {
   daysBetween,
   firstName,
@@ -21,7 +23,7 @@ import {
   relativeTime,
 } from "./format";
 import { brainName } from "./outages";
-import { modelLimitOf, ownLimitsModel, planOf, planReplies } from "./plans";
+import { isPlanId, modelLimitOf, ownLimitsModel, planOf, planReplies } from "./plans";
 
 /**
  * The words of the plan usage views (ADR 0063), shared by the web and the phone: a plan meter's text, an
@@ -48,6 +50,11 @@ export interface MeterSegment {
 }
 
 const WINDOW_NAMES = ["five_hour", "seven_day", "seven_day_opus", "seven_day_sonnet", "monthly"] as const;
+/** `other` windows the runner labels in English (apps/server/runner/plan-usage.ts); any other label shows as is. */
+const LABEL_NAMES = new Map<string, "extraUsage" | "oauthApps">([
+  ["Extra usage", "extraUsage"],
+  ["OAuth apps", "oauthApps"],
+]);
 
 /** When a window resets, in the viewer's time zone: the time today, the weekday this week, else the date. */
 function resetWhen(locale: string, iso: string, now: Date): { day: string | null; time: string } {
@@ -231,9 +238,10 @@ export function planMeterText(
   updated(iso: string): string;
   ago(iso: string): string;
   stale(iso: string): string;
+  group(name: string | null): string;
 } {
   const named = (w: Pick<MeterWindow, "kind" | "label">, words: "window" | "short") => {
-    const kind = WINDOW_NAMES.find((k) => k === w.kind);
+    const kind = WINDOW_NAMES.find((k) => k === w.kind) ?? LABEL_NAMES.get(w.label ?? "");
     return kind ? t(`aiAccounts.usage.${words}.${kind}`) : (w.label ?? t(`aiAccounts.usage.${words}.other`));
   };
   return {
@@ -252,6 +260,7 @@ export function planMeterText(
     updated: (iso) => t("aiAccounts.usage.updated", { ago: relativeTime(t, locale, iso, now) }),
     ago: (iso) => t("aiAccounts.usage.ago", { ago: relativeTime(t, locale, iso, now) }),
     stale: (iso) => t("aiAccounts.usage.stale", { ago: relativeTime(t, locale, iso, now) }),
+    group: (name) => (name === null ? t("aiAccounts.usage.allModels") : t("aiAccounts.usage.onlyModels", { name })),
   };
 }
 
@@ -355,10 +364,10 @@ export function ownPlanLines(
           {
             key,
             logo: a.provider ?? a.kind,
-            name: accountTitle(a),
+            name: accountTitle(t, a),
             usage,
             computer: a.computer,
-            detail: a.email ?? (a.keyHint ? t("aiAccounts.page.keyEnds", { hint: a.keyHint }) : null),
+            detail: accountSub(a) ?? (a.keyHint ? t("aiAccounts.page.keyEnds", { hint: a.keyHint }) : null),
           },
         ]
       : [];
@@ -476,9 +485,39 @@ export function shareFacts(
     .join("");
 }
 
+const KIND_ORDER: readonly PlanUseKind[] = ["handoffs", "people", "routines"];
+
+/**
+ * An account's use by kind, in a fixed order (handoffs, people, routines), the kinds with neither tokens this month
+ * nor a part of the window left out: early in a month the week still holds last month's use, as the agents' list does.
+ */
+export const accountKinds = (account: Pick<PlanAccountUsage, "kinds">) =>
+  KIND_ORDER.flatMap(
+    (kind) => account.kinds?.find((k) => k.kind === kind && (k.tokens > 0 || (k.percent ?? 0) > 0)) ?? [],
+  );
+
+/** `shareFacts` for a kind's line, each fact whole ("week\u00a037%"), so a narrow row never parts a number from its unit. */
+export const kindFacts = (
+  t: TFunction,
+  lang: string,
+  window: string | null,
+  row: { percent: number | null; tokens: number },
+) =>
+  shareFacts(t, lang, window, { share: row.percent ?? 0, tokens: row.tokens })
+    .split(" · ")
+    .map((fact) => fact.replaceAll(" ", "\u00a0"))
+    .join(" · ");
+
 /** Whose a plan account is, in words: "de Ana" (the first name); null where the server names no owner. */
 export const accountOwner = (t: TFunction, a: Pick<PlanAccountInfo, "ownerName">) =>
   a.ownerName ? t("usageViews.whose", { name: firstName(a.ownerName) }) : null;
+
+/**
+ * Whose an account is, under its name (`accountName`): its email where the name is one its owner gave it, nothing
+ * where the email is already the name, else its owner.
+ */
+export const accountWhose = (t: TFunction, a: Pick<PlanAccountInfo, "ownerName" | "email" | "named">) =>
+  a.email ? (a.named === true ? a.email : null) : accountOwner(t, a);
 
 /**
  * Who uses a plan (ADR 0059 §3), in a few words for its row: "Todos usam", "Só você usa", "Só Ana usa". Null for the
@@ -575,9 +614,58 @@ export function groupUsageAccounts(
   return out;
 }
 
-/** What people call a plan account: its label, or the computer's own sign-in's name (`ownSignInName`). */
-export const accountName = (t: TFunction, a: Pick<PlanAccountInfo, "label" | "machineName" | "mine" | "kind">) =>
-  a.label ?? ownSignInName(t, a.mine, a.machineName, a.kind);
+/** Rows of the usage list, an order of use's together (`group`) or the rest in the order they came (null). */
+export interface UsageOrderSection<R> {
+  group: AccountOrderGroup | null;
+  rows: R[];
+}
+
+/**
+ * The usage list's rows by order of use (ADR 0041 §6): the accounts of one order with two or more rows shown come
+ * together, first to last, where the first of them was. An order of one shows as any other row.
+ */
+export function usageOrderSections<R extends Pick<PlanAccountInfo, "machineId" | "kind" | "accountId">>(
+  rows: readonly R[],
+  groups: readonly AccountOrderGroup[] | undefined,
+): UsageOrderSection<R>[] {
+  const place = new Map<string, { group: AccountOrderGroup; index: number }>();
+  for (const group of groups ?? [])
+    group.accounts.forEach((a, index) => {
+      place.set(`${group.machineId}:${group.kind}:${a.id}`, { group, index });
+    });
+  const at = (r: R) => (r.accountId ? place.get(`${r.machineId}:${r.kind}:${r.accountId}`) : undefined);
+  const count = new Map<AccountOrderGroup, number>();
+  for (const r of rows) {
+    const p = at(r);
+    if (p) count.set(p.group, (count.get(p.group) ?? 0) + 1);
+  }
+  const out: UsageOrderSection<R>[] = [];
+  for (const r of rows) {
+    const p = at(r);
+    const group = p && (count.get(p.group) ?? 0) > 1 ? p.group : null;
+    const section = group ? out.find((s) => s.group === group) : out[out.length - 1];
+    if (section && section.group === group) section.rows.push(r);
+    else out.push({ group, rows: [r] });
+  }
+  for (const s of out) if (s.group) s.rows.sort((a, b) => (at(a)?.index ?? 0) - (at(b)?.index ?? 0));
+  return out;
+}
+
+/**
+ * What people call a plan account: as every app titles it (`accountTitle`: a name its owner gave it, else its email),
+ * or the computer's own sign-in's name (`ownSignInName`).
+ */
+export const accountName = (
+  t: TFunction,
+  a: Pick<PlanAccountInfo, "label" | "named" | "email" | "plan" | "provider" | "machineName" | "mine" | "kind">,
+) =>
+  a.label === null
+    ? ownSignInName(t, a.mine, a.machineName, a.kind)
+    : // Someone else's and a key account (an OpenCode one is too: the usage views carry no key's end) by their name
+      // alone, as before: the row's chip says the plan.
+      a.mine && a.kind !== "opencode" && !isPlanId(a.provider)
+      ? accountTitle(t, { ...a, label: a.label, keyHint: null })
+      : a.label;
 
 /** Who makes what an account thinks with: a coding plan's maker, else Claude Code or Codex. */
 export const brandOf = (a: Pick<PlanAccountInfo, "kind" | "provider">) =>

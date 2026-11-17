@@ -13,6 +13,8 @@ import {
   useAgents,
   useCatalog,
   useGitHubRepos,
+  useMe,
+  useMembers,
   useSkill,
   useSkillAction,
   useSkillSettings,
@@ -45,19 +47,22 @@ import {
   skillPickOf,
   skillRefusalText,
   skillRemovalText,
+  skillScopes,
   skillSourceViaText,
+  skillsSplit,
   skillUpdateErrorText,
   skillUpdateWords,
   skillViaText,
   skippedSkillText,
 } from "@agenteschat/client/lib/skills";
+import { modeKey } from "@agenteschat/client/lib/workspace-mode";
 import { diffLines } from "@agenteschat/ui/diff";
 import { useQueryClient } from "@tanstack/react-query";
 import * as DocumentPicker from "expo-document-picker";
 import { File } from "expo-file-system";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ActivityIndicator, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { useOrg } from "@/providers/org";
 import {
   Button,
@@ -68,8 +73,10 @@ import {
   GroupedHeader,
   GroupedList,
   GroupedRow,
+  SCREEN_X,
   SearchField,
   Segmented,
+  SkeletonList,
   Text,
   useToast,
 } from "@/ui";
@@ -78,42 +85,126 @@ import { router } from "@/ui/navigation";
 import { Note } from "../ai/parts";
 import { MessageText } from "../chat/MessageText";
 import { ConnectSheet } from "../connectors/ConnectSheet";
-import { FirstUse } from "../shared/FirstUse";
+import { FirstUse, LoadFailed } from "../shared/FirstUse";
 import { useColors, useDirectory, useErrorToast } from "../shared/hooks";
 import { goBack, successHaptic } from "../shared/parts";
 import { SheetHostProvider, useSheet } from "../shared/SheetHost";
 import { TextArea } from "../shared/TextArea";
 import { useStepText } from "./hooks";
 import { isGithubSkillLink, SKILLS_INLINE, searchSkills, skillLine, skillSourceKey } from "./logic";
-import { confirmAction, Gap, SettingsPage } from "./parts";
+import { confirmAction, Gap, NEXT_FIELD, SettingsPage, useUnsavedGuard } from "./parts";
 
 /** Opens a skill of the library (its page). */
 const openSkill = (id: string) => router.push(`/settings/skills/${id}`);
 
 /**
- * Skills (admins), as the web's: the workspace's library, each skill with what it is for, where it came from, its
- * version and how many agents use it; "Instalar skill" first, a search once the list is long. A skill opens its page.
+ * The change to skill `id` an action is saving, if that's what it does: a switch shows it at once. The action stays
+ * pending until the library is read again (`useSkillAction` waits for it), so the saved value takes over unseen.
+ */
+function pendingPatch(action: ReturnType<typeof useSkillAction>, id: string) {
+  const v = action.isPending ? action.variables : undefined;
+  return v?.type === "update" && v.id === id ? v.patch : undefined;
+}
+
+type SkillScope = "team" | "personal";
+
+/** Whether skills split into Equipe and Pessoal here, and the person's own id (`skillsSplit`, as the web's). */
+function useSkillScopes(orgId: string) {
+  const members = useMembers(orgId);
+  const skills = useSkills(orgId);
+  const me = useMe().data?.user.id ?? "";
+  const all = skills.data ?? [];
+  return { skills, me, split: skillsSplit(members.data?.length ?? 0, all), ...skillScopes(all, me) };
+}
+
+/**
+ * Skills, as the web's, for every member: the team's library (who manages agents changes it) and, where the
+ * workspace has more than one person, "Equipe | Pessoal" as the Vault has (ADR 0144). Each skill with what it is for,
+ * where it came from, its version and how many agents use it; a list under a large title, "Instalar skill" as the
+ * bar's "+", a search first once the library is long. Who manages agents also sees others' personal skills under the
+ * team's, name and person only, each taken out with its row's ×.
  */
 export function SkillsScreen() {
   const { t } = useTranslation();
-  const c = useColors();
   const { orgId, org } = useOrg();
   const admin = can(org, "manage_agents");
-  const skills = useSkills(orgId, admin);
-  const list = skills.data ?? [];
+  const { skills, split, team, mine, others } = useSkillScopes(orgId);
+  const [picked, setPicked] = useState<SkillScope | null>(null);
+  const scope: SkillScope = !split ? "team" : (picked ?? (admin ? "team" : "personal"));
+  const list = scope === "team" ? team : mine;
   const usage = useSkillUsage(orgId, admin && list.length > 0);
   const settings = useSkillSettings(orgId, admin);
   const action = useSkillAction(orgId);
+  // What is being saved shows at once: the switch moves as it is tapped (the action stays pending until the library is
+  // read again, so the saved value takes over with no flicker).
+  const pendingSettings =
+    action.isPending && action.variables?.type === "settings" ? action.variables.settings : undefined;
+  const improves = pendingSettings?.agentsImprove ?? settings.data?.agentsImprove ?? true;
   const failed = useErrorToast();
+  const toast = useToast();
+  const dir = useDirectory();
   const [q, setQ] = useState("");
   const unavailable = skills.isError && (skills.error as { status?: number }).status === 404;
   const shown = searchSkills(list, q);
   const none = skills.isSuccess && list.length === 0;
-  const install = () => router.push("/settings/skills/new");
+  const mayInstall = admin || scope === "personal";
+  const install = () => router.push({ pathname: "/settings/skills/new", params: split ? { scope } : {} });
+  const removeOthers = (id: string, name: string) =>
+    confirmAction({
+      title: t("skills.removeTitle", { name }),
+      text: skillRemovalText(t, []),
+      action: t("skills.remove"),
+      cancel: t("common.cancel"),
+      onConfirm: () =>
+        action.mutate(
+          { type: "remove", id },
+          { onSuccess: () => toast({ title: t("skills.removed", { name }), icon: "check" }), onError: failed },
+        ),
+    });
+  // The search shows by the whole library's size, not the shown scope's, so switching Equipe | Pessoal never moves it.
+  const searchable = team.length + mine.length > SKILLS_INLINE;
   return (
-    <SettingsPage title={t("skills.title")}>
+    <SettingsPage
+      title={t("skills.title")}
+      largeTitle
+      // The search's results make room for the keyboard; a pull reads the library again.
+      keyboard={searchable}
+      onRefresh={() => Promise.allSettled([skills.refetch(), settings.refetch()])}
+      // Installing lives in the bar, as every list's "+".
+      {...(mayInstall && !unavailable && skills.isSuccess
+        ? { actions: [{ icon: "plus", sf: "plus", label: t("skills.install"), onPress: install }] }
+        : {})}
+    >
+      {searchable ? (
+        <View style={styles.search}>
+          <SearchField
+            value={q}
+            onChangeText={setQ}
+            placeholder={t("skills.search")}
+            accessibilityLabel={t("skills.search")}
+          />
+        </View>
+      ) : null}
+      {split && skills.isSuccess ? (
+        <View style={styles.tabs}>
+          <Segmented
+            wide
+            items={[
+              { key: "team", label: t(modeKey(org, "vault.tab.team")), count: team.length },
+              { key: "personal", label: t("vault.tab.personal"), count: mine.length },
+            ]}
+            value={scope}
+            onChange={(k) => setPicked(k as SkillScope)}
+          />
+        </View>
+      ) : null}
       <GroupedFooter>{t("settings.sectionText.skills")}</GroupedFooter>
-      {!admin ? (
+      {scope === "personal" && list.length > 0 ? (
+        <View style={styles.note}>
+          <Note icon="lock">{t("skills.personal.note")}</Note>
+        </View>
+      ) : null}
+      {!mayInstall && none ? (
         <View style={styles.note}>
           <Note icon="lock">{t("settings.readOnly")}</Note>
         </View>
@@ -123,15 +214,7 @@ export function SkillsScreen() {
         </View>
       ) : (
         <>
-          {none ? null : (
-            <>
-              <Gap />
-              <GroupedList>
-                <GroupedRow icon="plus" label={t("skills.install")} chevron onPress={install} />
-              </GroupedList>
-            </>
-          )}
-          {settings.data ? (
+          {scope === "team" && settings.data ? (
             <>
               <Gap />
               <GroupedList>
@@ -142,37 +225,27 @@ export function SkillsScreen() {
                     name: t("common.about", { label: t("skills.agentsImprove") }),
                     text: t("skills.agentsImproveHelp"),
                   }}
-                  toggle={settings.data.agentsImprove}
-                  disabled={action.isPending}
+                  toggle={improves}
                   onPress={() =>
-                    action.mutate(
-                      { type: "settings", settings: { agentsImprove: !settings.data?.agentsImprove } },
-                      { onError: failed },
-                    )
+                    action.mutate({ type: "settings", settings: { agentsImprove: !improves } }, { onError: failed })
                   }
                 />
               </GroupedList>
             </>
           ) : null}
-          {list.length > SKILLS_INLINE ? (
-            <View style={styles.search}>
-              <SearchField
-                value={q}
-                onChangeText={setQ}
-                placeholder={t("skills.search")}
-                accessibilityLabel={t("skills.search")}
-              />
-            </View>
-          ) : (
-            <Gap />
-          )}
-          {skills.isLoading ? <ActivityIndicator color={c.muted} style={styles.loading} /> : null}
-          {skills.isError && !skills.data ? (
-            <View style={styles.note}>
-              <Note icon="x">{t("common.loadFailed")}</Note>
-            </View>
+          <Gap />
+          {skills.isLoading ? <SkeletonList rows={4} /> : null}
+          {skills.isError && !skills.data ? <LoadFailed onRetry={() => void skills.refetch()} /> : null}
+          {none && scope === "personal" ? (
+            <EmptyState
+              size="panel"
+              title={t("skills.personal.emptyTitle")}
+              subtitle={t("skills.personal.emptyText")}
+              action={<Button variant="primary" label={t("skills.install")} onPress={install} />}
+            />
+          ) : none ? (
+            <FirstUse place="skills" size="panel" acts label={t("skills.install")} onPress={install} />
           ) : null}
-          {none ? <FirstUse place="skills" size="panel" acts label={t("skills.install")} onPress={install} /> : null}
           {list.length > 0 && shown.length === 0 ? (
             <EmptyState
               size="inline"
@@ -201,6 +274,32 @@ export function SkillsScreen() {
               ))}
             </GroupedList>
           ) : null}
+          {scope === "team" && others.length > 0 ? (
+            <>
+              <GroupedHeader>{`${t("skills.personal.others")} · ${others.length}`}</GroupedHeader>
+              <GroupedList>
+                {others.map((s) => (
+                  <GroupedRow
+                    key={s.id}
+                    icon="lock"
+                    label={s.name}
+                    sub={t("skills.personal.of", {
+                      name: dir.memberById.get(s.ownerUserId ?? "")?.name ?? t("channel.unknownPerson"),
+                    })}
+                    below={
+                      <Text variant="caption" tone="faint" numberOfLines={1}>
+                        {t("skills.usedBy", { count: s.agentsCount ?? 0 })}
+                      </Text>
+                    }
+                    // The row's ×: who manages agents takes it out (the system's confirmation first).
+                    {...(action.isPending
+                      ? {}
+                      : { remove: { label: t("skills.remove"), onPress: () => removeOthers(s.id, s.name) } })}
+                  />
+                ))}
+              </GroupedList>
+            </>
+          ) : null}
         </>
       )}
     </SettingsPage>
@@ -218,10 +317,13 @@ export function SkillScreen({ id }: { id: string }) {
   const toast = useToast();
   const { orgId, org } = useOrg();
   const admin = can(org, "manage_agents");
+  const meId = useMe().data?.user.id;
   const skill = useSkill(orgId, id || null);
   const action = useSkillAction(orgId);
   const usage = useSkillUsage(orgId, admin);
   const s = skill.data;
+  // A personal skill is its person's to change; a team one, who manages agents'. Everyone else reads it.
+  const manages = s ? (s.ownerUserId ? s.ownerUserId === meId : admin) : false;
   const users = usage.get(id) ?? [];
   const via = s ? skillSourceViaText(t, s) : null;
   const subtitle = s
@@ -278,13 +380,8 @@ export function SkillScreen({ id }: { id: string }) {
 
   return (
     <SettingsPage title={s?.name ?? t("skills.title")} subtitle={subtitle}>
-      {skill.isLoading ? <ActivityIndicator color={c.muted} style={styles.loading} /> : null}
-      {skill.isError && !s ? (
-        <View style={[styles.note, styles.retry]}>
-          <Note icon="x">{t("common.loadFailed")}</Note>
-          <Button size="sm" variant="secondary" label={t("common.retry")} onPress={() => void skill.refetch()} />
-        </View>
-      ) : null}
+      {skill.isLoading ? <SkeletonList rows={3} /> : null}
+      {skill.isError && !s ? <LoadFailed onRetry={() => void skill.refetch()} /> : null}
       {s ? (
         <>
           {s.description ? <GroupedFooter>{s.description}</GroupedFooter> : null}
@@ -293,8 +390,8 @@ export function SkillScreen({ id }: { id: string }) {
               <Note icon={<SocialMark provider="github" color={c.muted} size={15} />}>{via}</Note>
             </View>
           ) : null}
-          {admin ? <SourceUpdate skill={s} /> : null}
-          {admin ? <AgentImprove skill={s} /> : null}
+          {manages ? <SourceUpdate skill={s} /> : null}
+          {manages ? <AgentImprove skill={s} /> : null}
           <Gap />
           <GroupedList>
             <View style={styles.page}>
@@ -314,7 +411,7 @@ export function SkillScreen({ id }: { id: string }) {
               </GroupedList>
             </>
           ) : null}
-          {admin ? (
+          {manages ? (
             <>
               <Gap />
               <GroupedList>
@@ -375,7 +472,7 @@ function PendingDiff({ skill: s }: { skill: SkillDetail }) {
   return (
     <>
       {views.length > 1 ? (
-        <View style={styles.tabs}>
+        <View style={styles.bleed}>
           <Filters
             items={views.map((v) => ({ key: v.id, label: t(`skills.diff.${v.id}`) }))}
             value={view?.id ?? "link"}
@@ -420,6 +517,8 @@ function SourceUpdate({ skill: s }: { skill: SkillDetail }) {
   const action = useSkillAction(orgId);
   const agents = useAgents(orgId);
   if (s.source !== "url" || !s.sourceUrl) return null;
+  // "Update by itself" shows what is being saved at once (the action stays pending until the skill is read again).
+  const autoUpdate = pendingPatch(action, s.id)?.autoUpdate ?? s.autoUpdate ?? false;
   const words = skillUpdateWords(t, i18n.language, s);
   const waiting = words.waiting;
   const nameOf = (id: string) => agents.data?.find((a) => a.id === id)?.name ?? t("channel.unknownAgent");
@@ -527,10 +626,9 @@ function SourceUpdate({ skill: s }: { skill: SkillDetail }) {
         <GroupedRow
           label={t("skills.autoUpdate")}
           hint={{ name: t("common.about", { label: t("skills.autoUpdate") }), text: t("skills.autoUpdateHelp") }}
-          toggle={s.autoUpdate ?? false}
-          disabled={action.isPending}
+          toggle={autoUpdate}
           onPress={() =>
-            action.mutate({ type: "update", id: s.id, patch: { autoUpdate: !s.autoUpdate } }, { onError: failed })
+            action.mutate({ type: "update", id: s.id, patch: { autoUpdate: !autoUpdate } }, { onError: failed })
           }
         />
         {words.last ? (
@@ -547,27 +645,63 @@ function SourceUpdate({ skill: s }: { skill: SkillDetail }) {
   );
 }
 
-/** One change an agent made, as the web's: who and when; a tap opens its diff in place. */
-function ChangeRow({ change: c, agent }: { change: SkillAgentChange; agent: string }) {
+/**
+ * One change an agent made, as the web's: who and when; a tap pushes its diff on a screen of its own (a diff opened
+ * inside the list grew the card under the finger and pushed everything after it down).
+ */
+function ChangeRow({ skillId, change: c, agent }: { skillId: string; change: SkillAgentChange; agent: string }) {
   const { t, i18n } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const line = t("skills.agentChange", { agent, when: relativeTime(t, i18n.language, c.at) });
   return (
-    <>
-      <GroupedRow
-        icon="eye"
-        label={line}
-        labelLines={2}
-        sub={c.undone ? t("skills.history.undone") : undefined}
-        value={t(open ? "skills.history.hide" : "skills.history.show")}
-        onPress={() => setOpen(!open)}
-      />
-      {open ? (
-        <View style={styles.page}>
-          <DiffView lines={diffLines(c.before.split("\n"), c.after.split("\n"))} />
-        </View>
-      ) : null}
-    </>
+    <GroupedRow
+      icon="eye"
+      label={t("skills.agentChange", { agent, when: relativeTime(t, i18n.language, c.at) })}
+      labelLines={2}
+      {...(c.undone ? { sub: t("skills.history.undone") } : {})}
+      chevron
+      onPress={() => router.push({ pathname: "/settings/skills/change", params: { id: skillId, change: c.id } })}
+    />
+  );
+}
+
+/**
+ * What an agent changed in a skill, pushed from its page's history: who and when under the title, then the diff of
+ * its instructions, as the web's sheet draws it.
+ */
+export function SkillChangeScreen({ id, changeId }: { id: string; changeId: string }) {
+  const { t, i18n } = useTranslation();
+  const { orgId } = useOrg();
+  const skill = useSkill(orgId, id || null);
+  const agents = useAgents(orgId);
+  const change = skill.data?.changes?.find((x) => x.id === changeId);
+  const agent = change ? (agents.data?.find((a) => a.id === change.agentId)?.name ?? t("channel.unknownAgent")) : "";
+  // Who and when under the title, and that it was undone, as its row in the history says it.
+  const line = change
+    ? [
+        t("skills.agentChange", { agent, when: relativeTime(t, i18n.language, change.at) }),
+        change.undone ? t("skills.history.undone") : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : undefined;
+  return (
+    <SettingsPage title={skill.data?.name ?? t("skills.history.title")} subtitle={line}>
+      {change ? (
+        <>
+          <Gap />
+          <GroupedList>
+            <View style={styles.page}>
+              <DiffView lines={diffLines(change.before.split("\n"), change.after.split("\n"))} />
+            </View>
+          </GroupedList>
+        </>
+      ) : skill.isLoading ? (
+        <SkeletonList rows={3} />
+      ) : skill.isError ? (
+        <LoadFailed onRetry={() => void skill.refetch()} />
+      ) : (
+        <EmptyState size="inline" title={t("common.gone")} />
+      )}
+    </SettingsPage>
   );
 }
 
@@ -587,7 +721,9 @@ function AgentImprove({ skill: s }: { skill: SkillDetail }) {
   if (s.origin === "agent") return null;
   const change = s.lastUpdate?.agentId ? s.lastUpdate : null;
   const nameOf = (id: string) => agents.data?.find((a) => a.id === id)?.name ?? t("channel.unknownAgent");
-  const on = s.agentsImprove ?? settings.data?.agentsImprove ?? true;
+  // What is being saved shows at once, as the library's switch does.
+  const saving = pendingPatch(action, s.id)?.agentsImprove;
+  const on = (typeof saving === "boolean" ? saving : s.agentsImprove) ?? settings.data?.agentsImprove ?? true;
   return (
     <>
       <Gap />
@@ -596,7 +732,6 @@ function AgentImprove({ skill: s }: { skill: SkillDetail }) {
           label={t("skills.agentsImproveThis")}
           labelLines={2}
           toggle={on}
-          disabled={action.isPending}
           onPress={() =>
             action.mutate({ type: "update", id: s.id, patch: { agentsImprove: !on } }, { onError: failed })
           }
@@ -633,7 +768,7 @@ function AgentImprove({ skill: s }: { skill: SkillDetail }) {
           ) : (
             <GroupedList>
               {s.changes.map((c) => (
-                <ChangeRow key={c.id} change={c} agent={nameOf(c.agentId)} />
+                <ChangeRow key={c.id} skillId={s.id} change={c} agent={nameOf(c.agentId)} />
               ))}
             </GroupedList>
           )}
@@ -657,19 +792,36 @@ const REPOS_SHOWN = 30;
  * connection read it; when none can, "Conectar o GitHub" opens the connect sheet over it (or it says whom to ask),
  * and the link is read again once GitHub is connected.
  */
-export function InstallSkillScreen({ initialUrl, forAgentId }: { initialUrl?: string; forAgentId?: string }) {
+export function InstallSkillScreen({
+  initialUrl,
+  forAgentId,
+  scope,
+}: {
+  initialUrl?: string;
+  forAgentId?: string;
+  scope?: SkillScope;
+}) {
   return (
     <SheetHostProvider>
-      <InstallSkill initialUrl={initialUrl} forAgentId={forAgentId} />
+      <InstallSkill initialUrl={initialUrl} forAgentId={forAgentId} startScope={scope} />
     </SheetHostProvider>
   );
 }
 
 /**
  * `forAgentId`: opened from that agent's card, a row (on by default) turns what installs on for it, as on the web, only
- * from the card's own link: one typed over it or a repository picked instead goes on for nobody.
+ * from the card's own link: one typed over it or a repository picked instead goes on for nobody. Where skills split
+ * into the team's and each person's, "Para quem" starts at `startScope` (Equipe only for who manages agents).
  */
-function InstallSkill({ initialUrl, forAgentId }: { initialUrl?: string; forAgentId?: string }) {
+function InstallSkill({
+  initialUrl,
+  forAgentId,
+  startScope,
+}: {
+  initialUrl?: string;
+  forAgentId?: string;
+  startScope?: SkillScope;
+}) {
   const { t, i18n } = useTranslation();
   const c = useColors();
   const toast = useToast();
@@ -677,6 +829,11 @@ function InstallSkill({ initialUrl, forAgentId }: { initialUrl?: string; forAgen
   const sheet = useSheet();
   const { orgId, org } = useOrg();
   const action = useSkillAction(orgId);
+  const admin = can(org, "manage_agents");
+  const { split } = useSkillScopes(orgId);
+  const [scope, setScope] = useState<SkillScope>(startScope ?? (admin ? "team" : "personal"));
+  // Who doesn't manage agents is in a workspace of more than one person: theirs is always personal.
+  const mine = scope === "personal" && (split || !admin) ? { personal: true } : {};
   const repos = useGitHubRepos(orgId);
   const catalog = useCatalog();
   const github = catalog.data?.connectors.find((d) => d.id === "github");
@@ -735,7 +892,9 @@ function InstallSkill({ initialUrl, forAgentId }: { initialUrl?: string; forAgen
     action.mutate(
       {
         type: "import",
-        input: list ? { url: link, list } : { url: link, ...(forAgent ? { forAgentId: forAgent } : {}) },
+        input: list
+          ? { url: link, list, ...mine }
+          : { url: link, ...(forAgent ? { forAgentId: forAgent } : {}), ...mine },
       },
       {
         onSuccess: (result) => {
@@ -818,7 +977,10 @@ function InstallSkill({ initialUrl, forAgentId }: { initialUrl?: string; forAgen
         toast({ title: t("skills.installedMany", { count: list.length }), icon: "check" });
         goBack();
       };
-      action.mutate({ type: "importPicked", url: url.trim(), paths, forAgentId: sendFor(url) }, { onSuccess, onError });
+      action.mutate(
+        { type: "importPicked", url: url.trim(), paths, forAgentId: sendFor(url), ...mine },
+        { onSuccess, onError },
+      );
       return;
     }
     if (tab === "zip") {
@@ -843,7 +1005,7 @@ function InstallSkill({ initialUrl, forAgentId }: { initialUrl?: string; forAgen
         return;
       }
       action.mutate(
-        { type: "import", input: { zipBase64 }, upload: { signal: stopper.signal, onProgress: setSending } },
+        { type: "import", input: { zipBase64, ...mine }, upload: { signal: stopper.signal, onProgress: setSending } },
         {
           onSuccess: done,
           onError: (e) => {
@@ -859,7 +1021,10 @@ function InstallSkill({ initialUrl, forAgentId }: { initialUrl?: string; forAgen
       return;
     }
     action.mutate(
-      { type: "create", input: { name: form.name.trim(), description: form.description.trim(), body: form.body } },
+      {
+        type: "create",
+        input: { name: form.name.trim(), description: form.description.trim(), body: form.body, ...mine },
+      },
       { onSuccess: done, onError },
     );
   };
@@ -877,9 +1042,12 @@ function InstallSkill({ initialUrl, forAgentId }: { initialUrl?: string; forAgen
             }
       }
       locked={busy}
+      // Writing one is a form of three fields: the system's bar over the keyboard walks them (‹ › and Done).
+      toolbar={tab === "write"}
     >
       <View style={styles.tabs}>
         <Segmented
+          wide
           items={[
             { key: "github", label: t("skills.tab.github") },
             { key: "zip", label: t("skills.tab.zip") },
@@ -892,6 +1060,29 @@ function InstallSkill({ initialUrl, forAgentId }: { initialUrl?: string; forAgen
           }}
         />
       </View>
+      {split && admin ? (
+        <>
+          <GroupedHeader>{t("skills.personal.forWhom")}</GroupedHeader>
+          <View style={styles.tabs}>
+            <Segmented
+              wide
+              items={[
+                { key: "personal", label: t("vault.tab.personal") },
+                { key: "team", label: t(modeKey(org, "vault.tab.team")) },
+              ]}
+              value={scope}
+              onChange={(k) => {
+                setScope(k as SkillScope);
+                setChoices(null);
+              }}
+            />
+          </View>
+        </>
+      ) : split ? (
+        <View style={styles.note}>
+          <Note icon="lock">{t("skills.personal.note")}</Note>
+        </View>
+      ) : null}
       {tab === "github" ? (
         <>
           <GroupedHeader
@@ -970,7 +1161,7 @@ function InstallSkill({ initialUrl, forAgentId }: { initialUrl?: string; forAgen
                 <GroupedRow key={s.path} label={s.path} sub={skippedSkillText(t, s)} subLines={3} disabled />
               ))}
             </GroupedList>
-          ) : repos.data?.connected ? (
+          ) : admin && repos.data?.connected ? (
             <>
               <GroupedHeader>{t("skills.connectedRepos")}</GroupedHeader>
               {total > SKILLS_INLINE ? (
@@ -1066,6 +1257,7 @@ function InstallSkill({ initialUrl, forAgentId }: { initialUrl?: string; forAgen
             onChangeText={(name) => setForm((f) => ({ ...f, name }))}
             multiline={false}
             minHeight={50}
+            {...NEXT_FIELD}
             accessibilityLabel={t("skills.name")}
           />
           <GroupedHeader
@@ -1107,7 +1299,6 @@ function InstallSkill({ initialUrl, forAgentId }: { initialUrl?: string; forAgen
  */
 export function EditSkillScreen({ id }: { id: string }) {
   const { t } = useTranslation();
-  const c = useColors();
   const toast = useToast();
   const { orgId } = useOrg();
   const skill = useSkill(orgId, id || null);
@@ -1119,6 +1310,15 @@ export function EditSkillScreen({ id }: { id: string }) {
     if (s && !form) setForm({ description: s.description, body: s.body, defaultForNewAgents: s.defaultForNewAgents });
   }, [s, form]);
   const ready = Boolean(form?.description.trim()) && !action.isPending;
+  // Back with what was typed and not saved asks first, as every form does.
+  const dirty = Boolean(
+    s &&
+      form &&
+      (form.description !== s.description ||
+        form.body !== s.body ||
+        form.defaultForNewAgents !== s.defaultForNewAgents),
+  );
+  const leave = useUnsavedGuard(dirty);
   const save = () => {
     if (!s || !form || !ready) return;
     action.mutate(
@@ -1127,6 +1327,7 @@ export function EditSkillScreen({ id }: { id: string }) {
         onSuccess: () => {
           successHaptic();
           toast({ title: t("skills.saved", { name: s.name }), icon: "check" });
+          leave();
           goBack();
         },
         onError: (e) => toast({ title: errorText(t, e), icon: "x" }),
@@ -1139,14 +1340,14 @@ export function EditSkillScreen({ id }: { id: string }) {
       subtitle={s?.name}
       action={{ label: t("skills.save"), disabled: !ready, onPress: save }}
       locked={action.isPending}
+      // Two long fields: the system's bar over the keyboard walks them and puts it away (‹ › and Done).
+      toolbar
     >
       {!form ? (
         skill.isError ? (
-          <View style={styles.note}>
-            <Note icon="x">{t("common.loadFailed")}</Note>
-          </View>
+          <LoadFailed onRetry={() => void skill.refetch()} />
         ) : (
-          <ActivityIndicator color={c.muted} style={styles.loading} />
+          <SkeletonList rows={3} />
         )
       ) : (
         <>
@@ -1185,12 +1386,12 @@ export function EditSkillScreen({ id }: { id: string }) {
 
 const styles = StyleSheet.create({
   note: { paddingHorizontal: 4, paddingTop: 10 },
-  retry: { gap: 10, alignItems: "flex-start" },
-  search: { paddingTop: 14, paddingBottom: 8 },
-  loading: { marginVertical: 16 },
+  search: { paddingTop: 4, paddingBottom: 8 },
   page: { paddingHorizontal: 16, paddingVertical: 14 },
   diff: { gap: 8, paddingTop: 10, paddingHorizontal: 4 },
-  tabs: { paddingTop: 10, paddingHorizontal: 4 },
+  tabs: { paddingTop: 10 },
+  // Under the page's 16 at its sides: the chips' own row runs from edge to edge.
+  bleed: { paddingTop: 10, marginHorizontal: -SCREEN_X },
   error: { paddingTop: 8, paddingHorizontal: 16 },
   hidden: { gap: 12, paddingHorizontal: 4, paddingTop: 10, alignItems: "flex-start" },
 });

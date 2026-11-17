@@ -107,7 +107,7 @@ import type {
 } from "@agenteschat/client";
 import { ApiError } from "@agenteschat/client";
 import { moveInGroups } from "@agenteschat/client/lib/agent-groups";
-import { answersOthers, audienceOf } from "@agenteschat/client/lib/audience";
+import { answersOthers, audienceOf, listsAllAgents } from "@agenteschat/client/lib/audience";
 import type { ChatPrefs } from "@agenteschat/client/lib/chat-look";
 import { ISSUES_VIEW_DEFAULT } from "@agenteschat/client/lib/issues-view";
 import { freeHandle, takenHandles } from "@agenteschat/client/lib/new-agent";
@@ -126,7 +126,7 @@ import { createMockCustomConnectors } from "./fakes/custom-connectors";
 import { createFakeDashboards, type FakeDashboards } from "./fakes/dashboards";
 import { createFakeDatabases, type FakeDatabases } from "./fakes/databases";
 import { createFakeDevices, type FakeDevices } from "./fakes/devices";
-import { createFakeMachines, type FakeMachines } from "./fakes/machines";
+import { createFakeMachines, type FakeMachines, withNamed } from "./fakes/machines";
 import { createFakeMail, type FakeMail } from "./fakes/mail";
 import { createFakeMissions } from "./fakes/missions";
 import { createFakeNotifications } from "./fakes/notifications";
@@ -308,6 +308,8 @@ export interface FakeState {
   teamWeek?: Partial<LodiPrefs>;
   /** The workspace's own switches of Lodi; unset: on. */
   lodiSwitches?: { teamWatch?: boolean; welcomePeople?: boolean };
+  /** The workspace's approvals level (ADR 0173); unset: `risky`. */
+  approvalsLevel?: "always" | "risky" | "never";
   memories: Memory[];
   proposals: Proposal[];
   reactions: Record<string, ReactionCount[]>;
@@ -361,8 +363,12 @@ export interface FakeState {
   failPosts?: boolean | ApiError;
   /** `chat.post` waits for this (to see the pending state). */
   holdPosts?: Promise<void>;
+  /** `orgs.setAccent` waits for this (to see the pending state). */
+  setAccentGate?: Promise<void>;
   /** What `orgs.billingLink` throws (default: a link on billing.example.com). */
   billingLinkError?: ApiError;
+  /** What `account.referralsLink` throws (default: a link on refer.example.com). */
+  referralsLinkError?: ApiError;
   /** A new workspace's standing (`orgs.create`): agentes.chat Cloud starts it waiting for its first plan. */
   newWorkspaceStanding?: OrgStanding;
   /** `orgs.limits` (ADR 0079); unset = no limits, the members counted from `members`. */
@@ -520,6 +526,7 @@ export function seedRoles(): OrgRole[] {
         "post",
         "create_channels",
         "talk_to_agents",
+        "view_all_agents",
         "assign_work",
         "pair_computers",
         "own_computers",
@@ -558,8 +565,16 @@ const PERMISSION_AREAS = [
   },
   {
     id: "agents",
-    use: ["talk_to_agents", "assign_work", "manage_routines"],
-    keys: ["talk_to_agents", "assign_work", "manage_routines", "approve_actions", "create_agents", "manage_agents"],
+    use: ["talk_to_agents", "view_all_agents", "assign_work", "manage_routines"],
+    keys: [
+      "talk_to_agents",
+      "view_all_agents",
+      "assign_work",
+      "manage_routines",
+      "approve_actions",
+      "create_agents",
+      "manage_agents",
+    ],
   },
   {
     id: "tools",
@@ -1377,6 +1392,19 @@ export function createFakeHttpApi(state: FakeState): Omit<HttpApi, FakedParts> {
   };
   // Budgets like the backend: every agent has one (its own or the default); members see only percentages.
   const seesCost = () => state.me?.organizations[0]?.role !== "member";
+  // Same rule as the backend: everyone, the listed people, or only the owner (who can always talk to it).
+  const talksToMe = (a: Agent) => {
+    const mode = a.audience?.mode ?? "everyone";
+    const me = state.me?.user.id ?? "";
+    return (
+      mode === "everyone" || a.ownerUserId === me || (mode === "people" && (a.audience?.userIds ?? []).includes(me))
+    );
+  };
+  // The server's `listsAgentTo`: Equipe, its sectors and the counts name only these.
+  const listed = () => {
+    const all = listsAllAgents(state.me ? withPermissions(state.me).organizations[0] : undefined);
+    return state.agents.filter((a) => all || talksToMe(a));
+  };
   // A personal workspace (ADR 0159), as `me` says.
   const personalOrg = (orgId: string) => state.me?.organizations.find((o) => o.id === orgId)?.mode === "personal";
   // A new `me` with the org's logo changed, as the server answers: what the app read before stays as it was.
@@ -1437,16 +1465,27 @@ export function createFakeHttpApi(state: FakeState): Omit<HttpApi, FakedParts> {
         return { ...offer, state: decision === "send" ? "sent" : "dismissed", decidedAt: new Date().toISOString() };
       },
       jev: async () => state.jev ?? null,
-      saveJev: async (apiKey) => {
-        log("system.saveJev", apiKey);
+      saveJev: async (input) => {
+        log("system.saveJev", input);
         if (!state.jev) throw new ApiError(404, "not_found", "Not found");
+        // The workspace's own OpenRouter key: a key ending like that credential's.
+        const apiKey =
+          typeof input === "string"
+            ? input
+            : `sk-or-v1-${state.credentials.find((c) => c.id === input.credentialId)?.keyHint ?? "0000"}`;
         const verdict = state.jevVerdicts?.[apiKey];
         if (verdict === "invalid") throw new ApiError(422, "jev_key_invalid", "TypeSafe didn't accept this key.");
         if (verdict === "rate_limited") {
           delete state.jevVerdicts?.[apiKey];
           throw new ApiError(429, "rate_limited", "Too many tries. Wait a minute.");
         }
-        state.jev = { ...state.jev, source: "settings", hint: apiKey.slice(-4), state: verdict ?? "ok" };
+        state.jev = {
+          ...state.jev,
+          source: "settings",
+          via: apiKey.startsWith("sk-or-") ? "openrouter" : "typesafe",
+          hint: apiKey.slice(-4),
+          state: verdict ?? "ok",
+        };
         return state.jev;
       },
       checkJev: async () => {
@@ -1457,7 +1496,7 @@ export function createFakeHttpApi(state: FakeState): Omit<HttpApi, FakedParts> {
       removeJev: async () => {
         log("system.removeJev");
         if (!state.jev) throw new ApiError(404, "not_found", "Not found");
-        state.jev = { ...state.jev, source: null, hint: null, state: "off" };
+        state.jev = { ...state.jev, source: null, via: null, hint: null, state: "off" };
         return state.jev;
       },
       gifKey: async () => state.gifKey ?? null,
@@ -1512,6 +1551,11 @@ export function createFakeHttpApi(state: FakeState): Omit<HttpApi, FakedParts> {
         firstRun: false,
         ...state.authConfig,
       }),
+      referralsLink: async (returnTo) => {
+        log("account.referralsLink", returnTo);
+        if (state.referralsLinkError) throw state.referralsLinkError;
+        return { url: "https://refer.example.com/link?t=v1", expiresAt: NOW.toISOString() };
+      },
       signInOptions: async (input, humanCheck) => {
         if (humanCheck !== undefined) state.calls.push({ method: "account.signInOptions", args: [input, humanCheck] });
         return state.signInOptions ?? { account: false, password: false, providers: [], canSignUp: true };
@@ -1544,10 +1588,9 @@ export function createFakeHttpApi(state: FakeState): Omit<HttpApi, FakedParts> {
         },
       restore: async () => {
         log("account.restore");
-        if (state.me) {
-          const { deletion: _gone, ...user } = state.me.user;
-          state.me = { ...state.me, user };
-        }
+        const me = requireMe();
+        const { deletion: _gone, ...user } = me.user;
+        state.me = { ...me, user };
       },
       delete: async (input) => {
         log("account.delete", input);
@@ -1808,6 +1851,18 @@ export function createFakeHttpApi(state: FakeState): Omit<HttpApi, FakedParts> {
         org.chatPrefs = { ...org.chatPrefs, ...patch };
         return org.chatPrefs;
       },
+      setConversationWallpaper: async (orgId, channelId, wallpaper) => {
+        log("orgs.setConversationWallpaper", orgId, channelId, wallpaper);
+        const org = state.me?.organizations.find((o) => o.id === orgId);
+        if (!org) throw new ApiError(404, "not_found", "Organization not found");
+        const { [channelId]: _old, ...rest } = org.chatPrefs?.wallpapers ?? {};
+        org.chatPrefs = { ...org.chatPrefs, wallpapers: wallpaper ? { ...rest, [channelId]: wallpaper } : rest };
+        return org.chatPrefs;
+      },
+      uploadWallpaperPhoto: async (orgId, input) => {
+        log("orgs.uploadWallpaperPhoto", orgId, input.contentType);
+        return { url: "/api/app/wallpapers/me/0123456789abcdef.jpg" };
+      },
       sidebarItems: async () => structuredClone(state.sidebarItems ?? {}),
       setSidebarItem: async (orgId, item, place) => {
         log("orgs.setSidebarItem", orgId, item, place);
@@ -1874,6 +1929,18 @@ export function createFakeHttpApi(state: FakeState): Omit<HttpApi, FakedParts> {
       removeLogo: async (orgId) => {
         log("orgs.removeLogo", orgId);
         setOrgLogo(orgId, null);
+      },
+      setAccent: async (orgId, accent) => {
+        log("orgs.setAccent", orgId, accent);
+        if (state.setAccentGate) await state.setAccentGate;
+        if (state.me) {
+          const next = accent?.toLowerCase() ?? null;
+          state.me = {
+            ...state.me,
+            organizations: state.me.organizations.map((o) => (o.id === orgId ? { ...o, accent: next } : o)),
+          };
+        }
+        return { accent: accent?.toLowerCase() ?? null };
       },
       billingLink: async (orgId, from, _returnTo, plan) => {
         log("orgs.billingLink", orgId, from, ...(plan ? [plan] : []));
@@ -1954,11 +2021,21 @@ export function createFakeHttpApi(state: FakeState): Omit<HttpApi, FakedParts> {
         autoModels: state.autoModels ?? {},
         teamWatch: state.lodiSwitches?.teamWatch ?? true,
         welcomePeople: state.lodiSwitches?.welcomePeople ?? true,
+        approvalsLevel: state.approvalsLevel ?? "risky",
         ...mediaSettings(state),
         mode: personalOrg(orgId) ? "personal" : "team",
         // Money: admins only, like the backend.
         ...(seesCost() ? { defaultAgentBudgetUsd: state.defaultAgentBudgetUsd ?? 50 } : {}),
       }),
+      setApprovalsLevel: async (orgId, { level, everyAgent }) => {
+        log("orgs.setApprovalsLevel", orgId, { level, everyAgent });
+        // As the backend: agents that follow the workspace take it, or every agent, their own choices cleared.
+        state.approvalsLevel = level;
+        for (const a of state.agents)
+          if (everyAgent || a.approvalsLevelOwn === false)
+            Object.assign(a, { approvalsLevel: level, approvalsLevelOwn: false });
+        return { level, ownAgents: state.agents.filter((a) => a.approvalsLevelOwn === true).length };
+      },
       updateSettings: async (orgId, input) => {
         log("orgs.updateSettings", orgId, input);
         // A switch of mode (ADR 0159), with the name it may bring: `me` says them at once, as the server's.
@@ -2017,7 +2094,7 @@ export function createFakeHttpApi(state: FakeState): Omit<HttpApi, FakedParts> {
         name: "Acme",
         role: state.me?.organizations[0]?.role ?? "member",
         people: state.members.length,
-        agents: state.agents.length,
+        agents: listed().length,
         budgetUsedPercent: workspacePercent(),
         approvalsWaitingForMe: state.approvals.filter((a) => a.status === "pending" && a.canDecide).length,
         proposalsWaitingForMe: state.proposals.filter((p) => p.status === "pending" && !p.stale && p.canDecide).length,
@@ -2177,7 +2254,13 @@ export function createFakeHttpApi(state: FakeState): Omit<HttpApi, FakedParts> {
     },
     // Groups of agents (ADR 0083), with the server's order rules; every change answers with all of them.
     agentGroups: {
-      list: async () => structuredClone(state.agentGroups ?? []),
+      list: async () => {
+        const all = listsAllAgents(state.me ? withPermissions(state.me).organizations[0] : undefined);
+        const ids = new Set(listed().map((a) => a.id));
+        return structuredClone(state.agentGroups ?? [])
+          .map((g) => (all ? g : { ...g, agentIds: g.agentIds.filter((id) => ids.has(id)) }))
+          .filter((g) => all || g.agentIds.length > 0);
+      },
       create: async (orgId, input) => {
         state.calls.push({ method: "agentGroups.create", args: [orgId, input] });
         const ids = input.agentIds ?? [];
@@ -2275,7 +2358,7 @@ export function createFakeHttpApi(state: FakeState): Omit<HttpApi, FakedParts> {
         return { previous };
       },
       team: async () => ({
-        agents: state.agents.map((a) => ({
+        agents: listed().map((a) => ({
           id: a.id,
           name: a.name,
           handle: a.handle,
@@ -2296,15 +2379,10 @@ export function createFakeHttpApi(state: FakeState): Omit<HttpApi, FakedParts> {
           .map((m) => ({ id: m.userId, name: m.name, image: m.image ?? null })),
         consultations: [],
       }),
-      // Same rule as the backend: everyone, the listed people, or only the owner (who can always talk to it).
       list: async () =>
         state.agents.map((a) => {
           const mode = a.audience?.mode ?? "everyone";
-          const me = state.me?.user.id ?? "";
-          const canTalk =
-            mode === "everyone" ||
-            a.ownerUserId === me ||
-            (mode === "people" && (a.audience?.userIds ?? []).includes(me));
+          const canTalk = talksToMe(a);
           const { monthlyBudgetUsd, ...rest } = a;
           // Same rule as the backend: how it works only for who it answers, its owner and admins.
           const seesDetails = canTalk || seesCost();
@@ -2543,7 +2621,13 @@ export function createFakeHttpApi(state: FakeState): Omit<HttpApi, FakedParts> {
           agent.previousHandles = [...(agent.previousHandles ?? []).filter((h) => h !== input.handle), agent.handle];
         }
         // As the backend: a mailbox given since the person was asked refuses the save.
-        const { mailLossSeen, ...fields } = input;
+        const { mailLossSeen, approvalsLevel, ...fields } = input;
+        // As the backend: a level is the agent's own choice; null follows the workspace's again.
+        if (approvalsLevel !== undefined)
+          Object.assign(agent, {
+            approvalsLevel: approvalsLevel ?? state.approvalsLevel ?? "risky",
+            approvalsLevelOwn: approvalsLevel !== null,
+          });
         if (mailLossSeen && (state.mailLoss?.[agentId] ?? []).some((m) => !mailLossSeen.includes(m.accountId))) {
           throw new ApiError(409, "agent.mail_loss_changed", "It holds a mailbox you weren't asked about");
         }
@@ -2614,6 +2698,19 @@ export function createFakeHttpApi(state: FakeState): Omit<HttpApi, FakedParts> {
         log("agents.addCredential", orgId, { ...input, apiKey: "[redacted]" });
         if (state.keyRefusal)
           throw new ApiError(400, state.keyRefusal, "The provider didn't accept this key.", state.keyRefusalParams);
+        // As the server: the same key saved again updates the one there (here: same provider, ending and address).
+        const same = state.credentials.find(
+          (c) =>
+            !c.revokedAt &&
+            c.provider === input.provider &&
+            c.keyHint === input.apiKey.slice(-4) &&
+            c.endpoint?.baseURL === input.endpoint?.baseURL,
+        );
+        if (same) {
+          if (input.endpoint) same.endpoint = input.endpoint;
+          const checks = input.endpoint?.models.map((m) => ({ model: m.id, check: "ok" as const }));
+          return { ...same, reused: true, ...(checks ? { checks } : {}) };
+        }
         // The counter starts again with each fake: never the id of a key the seed already has.
         let credId = id("cred");
         while (state.credentials.some((c) => c.id === credId)) credId = id("cred");
@@ -2657,6 +2754,14 @@ export function createFakeHttpApi(state: FakeState): Omit<HttpApi, FakedParts> {
         if (!cred) throw new ApiError(404, "not_found", "Credential not found");
         state.defaultCredentialId = credentialId;
         return { ...cred };
+      },
+      removeCredentialCopies: async (orgId, credentialId) => {
+        log("agents.removeCredentialCopies", orgId, credentialId);
+        const copies = state.credentials.filter((c) => c.copyOf === credentialId);
+        state.credentials = state.credentials
+          .filter((c) => c.copyOf !== credentialId)
+          .map((c) => (c.id === credentialId ? { ...c, copies: undefined } : c));
+        return { removed: copies.length };
       },
       checkCredential: async (orgId, credentialId) => {
         log("agents.checkCredential", orgId, credentialId);
@@ -2765,7 +2870,8 @@ export function createFakeHttpApi(state: FakeState): Omit<HttpApi, FakedParts> {
         const agent = state.agents.find((a) => a.id === agentId);
         if (me.organizations[0]?.role === "member" && agent?.ownerUserId !== me.user.id && !agent?.builtin)
           throw new ApiError(403, "agent.not_owner", "Only an admin or the agent's owner");
-        return structuredClone(brainOf(agentId));
+        const view = structuredClone(brainOf(agentId));
+        return { ...view, accounts: view.accounts.map(withNamed) };
       },
       brainMachines: async (orgId) => {
         log("agents.brainMachines", orgId);
@@ -2820,7 +2926,6 @@ export function createFakeHttpApi(state: FakeState): Omit<HttpApi, FakedParts> {
           brain,
           model,
           effectiveModel: brain === "model" ? null : (model ?? option?.defaultModel ?? null),
-          fallback: input.fallback ?? b.fallback,
           // ADR 0041: another brain kind starts on the computer's own account.
           account: input.account !== undefined ? input.account : changed ? null : b.account,
           effort: input.effort !== undefined ? input.effort : b.effort,
@@ -4312,6 +4417,7 @@ export function createFakeApi(state: FakeState = seedState(), options: { seed?: 
           kind: a.kind,
           accountId: a.id,
           label: a.label,
+          ...(a.named !== undefined ? { named: a.named } : {}),
           plan: a.plan,
           provider: a.provider,
           ownerName: a.ownerName,
@@ -4348,8 +4454,6 @@ export function fakeAgentBrain(agentId: string, patch: Partial<AgentBrain> = {})
     brain: "model",
     model: null,
     effectiveModel: null,
-    fallback: true,
-    extraUsage: true,
     computer: { machineId: "machine_1", name: "MacBook", online: true },
     options: [
       { kind: "model", available: true, models: [], defaultModel: null },
@@ -4357,9 +4461,9 @@ export function fakeAgentBrain(agentId: string, patch: Partial<AgentBrain> = {})
         kind: "claude_code",
         available: true,
         models: [
-          { value: "opus", label: "Opus", modelId: "claude-opus-5-5" },
-          { value: "sonnet", label: "Sonnet", modelId: "claude-sonnet-5-5", recommended: true },
-          { value: "haiku", label: "Haiku", modelId: "claude-haiku-5-5" },
+          { value: "opus", label: "Opus 5.5", modelId: "claude-opus-5-5" },
+          { value: "sonnet", label: "Sonnet 5.5", modelId: "claude-sonnet-5-5", recommended: true },
+          { value: "haiku", label: "Haiku 5.5", modelId: "claude-haiku-5-5" },
         ],
         defaultModel: "sonnet",
       },
@@ -4387,6 +4491,8 @@ export function fakeAgentBrain(agentId: string, patch: Partial<AgentBrain> = {})
     ownUsage: {},
     ...patch,
   };
+  // Its accounts as the server sends them: whether each name is the automatic one.
+  brain.accounts = brain.accounts.map(withNamed);
   // The computers the person may give the agent: the MacBook, with what it offers.
   if (patch.machines) return brain;
   const computer = brain.computer ?? { machineId: "machine_1", name: "MacBook", online: true };

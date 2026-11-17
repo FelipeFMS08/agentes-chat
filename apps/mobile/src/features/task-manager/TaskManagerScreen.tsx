@@ -16,6 +16,7 @@ import {
   computerRoomText,
   computersBesides,
   endedState,
+  endedText,
   groupLead,
   groupTasks,
   hiddenCount,
@@ -42,7 +43,6 @@ import Animated, {
 } from "react-native-reanimated";
 import { ComputerIcon, useComputerKind } from "@/computer/ComputerPortrait";
 import {
-  Button,
   Count,
   EmptyState,
   Icon,
@@ -64,7 +64,7 @@ import { CollapsibleSection } from "../chats/HomeSection";
 import { chatHref } from "../links/logic";
 import { useOpenQueue } from "../queue/QueueSheet";
 import { AgentFace, OpensAgent } from "../shared/Face";
-import { useEmptyLook } from "../shared/FirstUse";
+import { LoadFailed, useEmptyLook } from "../shared/FirstUse";
 import { useColors, useDirectory, useMeId, useNow, useOrgId, usePullRefresh, useWhen } from "../shared/hooks";
 import { agentLook } from "../shared/logic";
 import { SheetTitle } from "../shared/PromptForm";
@@ -72,7 +72,7 @@ import { PushedLargeTitle } from "../shared/PushedLargeTitle";
 import { type ActionItem, ActionList, Tile } from "../shared/parts";
 import { SheetHostProvider, useSheet } from "../shared/SheetHost";
 import { useStopper, useTasksToday } from "./hooks";
-import { endedLatestFirst, endedText, groupLine, type RowState, rowState, taskStateWords, taskSubline } from "./logic";
+import { endedLatestFirst, groupLine, type RowState, rowState, taskStateWords, taskSubline } from "./logic";
 import { TaskMark, useAgentColor, WaitLines } from "./parts";
 
 /** Rows whose agent moves (a long list stays light). */
@@ -179,12 +179,7 @@ function TaskManager() {
         // Loading: the rows' own shape, never a spinner.
         <SkeletonList rows={4} />
       ) : tasks.isError && !view ? (
-        <View style={styles.center}>
-          <Text tone="muted" style={styles.centerText}>
-            {t("mobile.taskManager.loadFailed")}
-          </Text>
-          <Button variant="secondary" size="sm" label={t("mobile.common.retry")} onPress={() => void tasks.refetch()} />
-        </View>
+        <LoadFailed onRetry={() => void tasks.refetch()} />
       ) : (
         // Loaded, the list fades in over the spinner; the rows it starts with don't each fade again.
         <Animated.View {...fade}>
@@ -551,7 +546,7 @@ function EndedRow({ task, divider, meId }: { task: EndedTask; divider: boolean; 
   const title = taskTitle(t, task);
   const agentName = dir.nameOf({ type: "agent", id: task.agentId });
   const line = [agentName, taskPlace(t, task)].filter(Boolean).join(" · ");
-  const how = endedText(t, task, meId);
+  const how = endedText(t, task, meId, (id) => dir.nameOf({ type: "agent", id }) || undefined);
   const state = endedState(task);
   return (
     <Pressable
@@ -744,8 +739,6 @@ const LEAD = 28;
 const GAP = "  ";
 
 const styles = StyleSheet.create({
-  center: { alignItems: "center", gap: 12, paddingVertical: 48, paddingHorizontal: 24 },
-  centerText: { textAlign: "center" },
   // Under the large title's words, as Equipe's line.
   summary: { paddingHorizontal: SCREEN_X, marginTop: -4, paddingBottom: 4 },
   today: { paddingHorizontal: SCREEN_X, paddingTop: 8 },

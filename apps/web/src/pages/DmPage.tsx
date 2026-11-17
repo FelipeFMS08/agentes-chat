@@ -15,6 +15,7 @@ import { AgentAvatar } from "@/components/AgentAvatar";
 import { AgentSetupIntro, useSetupSteps } from "@/components/AgentSetup";
 import { useAgentPanelShown, useOpenAgentPanel } from "@/components/agent-panel-context";
 import { ModelPickerButton } from "@/components/ai/ModelPicker";
+import { DmMoreMenu } from "@/components/ConversationMenu";
 import { ComputerButton } from "@/components/computer/ComputerDialog";
 import { ErrorState } from "@/components/Loading";
 import { NavToggle } from "@/components/NavDrawer";
@@ -82,12 +83,27 @@ export function DmPage({ target, focusMessageId }: { target: DmTarget; focusMess
   const role = agent ? agent.role || `@${agent.handle}` : "";
   // The right hand (ADR 0137) says what it is and whose permissions it acts with, never an owner, nor a model: each
   // person's DM with it thinks with their own AI, shown with its maker's logo in the side panel's Como pensa.
-  const header = ({ onSearch, side }: { onSearch: () => void; side: DmSideControl | null }) => (
+  const agentLine = agent
+    ? rightHand
+      ? `${t("rightHand.label")} · ${t("rightHand.actsAsYou")}`
+      : owner
+        ? t("dm.subtitle", { role, owner: owner.name })
+        : t("dm.subtitleNoOwner", { role })
+    : undefined;
+  const header = ({
+    onSearch,
+    side,
+    searching,
+  }: {
+    onSearch: () => void;
+    side: DmSideControl | null;
+    searching: boolean;
+  }) => (
     <header className="channel__header">
       <NavToggle />
       {/* Who it is with and the header's glyphs: the glyphs go under a name that can't keep its line beside them. */}
       <div className="ac-actline channel__line">
-        <DmWho agentId={agent?.id} userId={person?.userId} label={t("profile.of", { name })}>
+        <DmWho agentId={agent?.id} userId={person?.userId} label={t("profile.of", { name })} tip={agentLine}>
           <div className="dm-who__text">
             {agent ? (
               <AgentAvatar agentId={agent.id} name={agent.name} />
@@ -99,12 +115,8 @@ export function DmPage({ target, focusMessageId }: { target: DmTarget; focusMess
               {agent && <AudienceChip agent={agent} />}
             </h1>
             {agent && (
-              <span className="channel__topic" data-right-hand={rightHand || undefined}>
-                {rightHand
-                  ? `${t("rightHand.label")} · ${t("rightHand.actsAsYou")}`
-                  : owner
-                    ? t("dm.subtitle", { role, owner: owner.name })
-                    : t("dm.subtitleNoOwner", { role })}
+              <span className="channel__topic channel__topic--line" data-right-hand={rightHand || undefined}>
+                {agentLine}
               </span>
             )}
             {person && <span className="channel__topic">{person.email}</span>}
@@ -118,7 +130,9 @@ export function DmPage({ target, focusMessageId }: { target: DmTarget; focusMess
           {agent && !rightHand && <ModelPickerButton agent={agent} className="channel__brain" />}
           {agent && !rightHand && <ComputerButton agent={agent} queueOnly={side?.docked && seesDetails(agent)} />}
           {/* The same field as a channel's, held to this DM. */}
-          <HeaderSearch channelId={dm.data.channelId} onOpen={onSearch} dm />
+          <HeaderSearch channelId={dm.data.channelId} onOpen={onSearch} searching={searching} dm />
+          {/* Its own list, as its right click elsewhere, with this conversation's background. */}
+          <DmMoreMenu channelId={dm.data.channelId} name={name} agent={agent} person={person} />
           {side && (
             <Button
               size="sm"
@@ -182,11 +196,14 @@ function DmWho({
   agentId,
   userId,
   label,
+  tip,
   children,
 }: {
   agentId?: string;
   userId?: string;
   label: string;
+  /** The agent's line whole: under the name it keeps one line and may end in "…". */
+  tip?: string;
   children: ReactNode;
 }) {
   const openPanel = useOpenAgentPanel();
@@ -200,6 +217,7 @@ function DmWho({
           className="profile-trigger dm-who__hit"
           aria-label={label}
           aria-expanded={shown === agentId}
+          title={tip}
           onClick={() => openPanel?.(agentId)}
         />
       ) : userId ? (

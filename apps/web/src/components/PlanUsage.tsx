@@ -1,16 +1,28 @@
-import type { PlanAccountInfo, PlanAccountUsage, PlanServes } from "@agenteschat/client";
-import { keys, useAiAccounts, useApi, useModels, usePlanUsage } from "@agenteschat/client";
+import type {
+  AccountOrderGroup,
+  AiAccounts,
+  PlanAccountInfo,
+  PlanAccountUsage,
+  PlanServes,
+  PlanUseKind,
+} from "@agenteschat/client";
+import { keys, useAccountOrder, useAiAccounts, useApi, useModels, usePlanUsage } from "@agenteschat/client";
+import { removableLogins } from "@agenteschat/client/lib/ai-accounts";
 import { computerNameOf } from "@agenteschat/client/lib/computer";
 import { errorText } from "@agenteschat/client/lib/errors";
-import { formatPercent, formatTokensShort, formatUsd } from "@agenteschat/client/lib/format";
+import { formatPercent, formatTokensShort, formatUsd, joinNames } from "@agenteschat/client/lib/format";
+import { accountKinds, kindFacts, usageOrderSections } from "@agenteschat/client/lib/plan-usage";
 import { planName } from "@agenteschat/client/lib/plans";
 import { AUTO, apiProviderOf } from "@agenteschat/client/lib/providers";
 import { isPersonal } from "@agenteschat/client/lib/workspace-mode";
 import {
+  Alert,
   agentGradient,
   Button,
   Card,
   CardHeader,
+  Dialog,
+  DialogFooter,
   EmptyState,
   HintLine,
   Icon,
@@ -26,9 +38,10 @@ import {
 } from "@agenteschat/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Fragment, useEffect, useId, useState } from "react";
+import { Fragment, type HTMLAttributes, type ReactNode, useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AgentAvatar } from "@/components/AgentAvatar";
+import { OrderHead, useOrderMoves } from "@/components/ai/AccountOrder";
 import { AccountActions } from "@/components/ai/AiAccounts";
 import { PlanHold, usePlanHold } from "@/components/ai/ConnectAiSteps";
 import { useConnectAi, useMayConnectAi } from "@/components/ConnectAi";
@@ -41,6 +54,7 @@ import {
   accountName,
   accountOwner,
   accountShares,
+  accountWhose,
   brandOf,
   groupUsageAccounts,
   loginsText,
@@ -68,7 +82,7 @@ const WIDE_SPACE = "\u2002";
 /** An account's head: the maker's mark, its name and plan, its maker and whose it is. */
 export function AccountHead({ account, extra }: { account: PlanAccountInfo; extra?: string | null }) {
   const { t } = useTranslation();
-  const whose = account.email ?? accountOwner(t, account);
+  const whose = accountWhose(t, account);
   return (
     <div className="plan-acct ac-mediarow ac-mediarow--row">
       <span className="ac-mediarow__face">
@@ -100,6 +114,7 @@ export function PlanUsageCards() {
   const api = useApi();
   const usage = usePlanUsage(org.id);
   const mine = useAiAccounts(org.id);
+  const order = useAccountOrder(org.id);
   const look = useRightHandLook();
   const connectAi = useConnectAi();
   const mayConnect = useMayConnectAi();
@@ -126,6 +141,9 @@ export function PlanUsageCards() {
   // The viewer's own logins of one account are one row, as their plans group them.
   const accounts = groupUsageAccounts(usage.data.accounts, mine.data);
   const several = new Set(accounts.map((a) => a.machineId)).size > 1;
+  // One Grok login per agent is what connecting the same account for every agent left behind (issue #319): the batch
+  // removal takes them all at once, and only ever the viewer's own.
+  const grokLogins = removableLogins(mine.data?.accounts ?? [], "grok");
   const connect = connectAi && mayConnect && !hold && (
     <Button size="sm" icon="plus" onClick={() => connectAi.open({})}>
       {t("aiAccounts.page.connect")}
@@ -138,7 +156,7 @@ export function PlanUsageCards() {
         icon="computer"
         title={t("usageViews.accounts.title")}
         hint={{ name: t("common.about", { label: t("usageViews.accounts.title") }), text: t("usageViews.estimate") }}
-        action={accounts.length > 0 && connect}
+        action={accounts.length > 0 ? connect : undefined}
       />
       {/* What comes first: an invitation to connect a plan would contradict it. */}
       {hold && <PlanHold hold={hold} />}
@@ -161,17 +179,63 @@ export function PlanUsageCards() {
       )}
       {accounts.length > 0 && (
         <List className="plan-rows">
-          {accounts.map((a) => (
-            <AccountRow
-              key={a.key}
-              account={a}
-              money={money}
-              computer={several ? computerNameOf(t, org.name, a.machineName, isPersonal(org)) : null}
-            />
-          ))}
+          {usageOrderSections(accounts, order.data?.groups).map((s) =>
+            s.group ? (
+              <OrderRows
+                key={`${s.group.machineId}:${s.group.kind}`}
+                group={s.group}
+                rows={s.rows}
+                money={money}
+                several={several}
+              />
+            ) : (
+              s.rows.map((a) => (
+                <AccountRow
+                  key={a.key}
+                  account={a}
+                  money={money}
+                  computer={several ? computerNameOf(t, org.name, a.machineName, isPersonal(org)) : null}
+                />
+              ))
+            ),
+          )}
         </List>
       )}
+      {grokLogins.length > 1 && <RemoveGrokLogins logins={grokLogins} />}
     </Card>
+  );
+}
+
+/** An order of use's rows (ADR 0041 §6) under its heading, each starting with its place. */
+function OrderRows({
+  group,
+  rows,
+  money,
+  several,
+}: {
+  group: AccountOrderGroup;
+  rows: PlanAccountUsage[];
+  money: boolean;
+  several: boolean;
+}) {
+  const { t } = useTranslation();
+  const { org } = useOrg();
+  const { place, drop } = useOrderMoves(org.id, group);
+  const computer = several ? computerNameOf(t, org.name, group.computer, isPersonal(org)) : null;
+  return (
+    <div className="plan-order">
+      <OrderHead group={group} computer={computer} />
+      {rows.map((a) => (
+        <AccountRow
+          key={a.key}
+          account={a}
+          money={money}
+          computer={computer}
+          place={a.accountId ? place(a.accountId, accountName(t, a)) : undefined}
+          drop={a.accountId ? drop(a.accountId) : undefined}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -186,10 +250,15 @@ function AccountRow({
   account,
   money,
   computer,
+  place,
+  drop,
 }: {
   account: PlanAccountUsage;
   money: boolean;
   computer: string | null;
+  /** Its place in an order of use, before the row's line. */
+  place?: ReactNode;
+  drop?: HTMLAttributes<HTMLDivElement>;
 }) {
   const { t, i18n } = useTranslation();
   const { org } = useOrg();
@@ -201,8 +270,12 @@ function AccountRow({
   const [held, setHeld] = useState(open);
   const body = useId();
   const shares = accountShares(account);
+  const window = shares.window ? text.short(shares.window) : null;
   const list = shares.shown.length > 0 && (
-    <AgentShares shares={shares} window={shares.window ? text.short(shares.window) : null} />
+    <>
+      <AgentShares shares={shares} window={window} />
+      <KindShares account={account} window={window} />
+    </>
   );
   // Whose it is, who uses it and how many logins it stands for: each moves to the next line whole.
   const facts = [accountOwner(t, account), servesText(t, account), loginsText(t, account)].filter((f): f is string =>
@@ -211,7 +284,8 @@ function AccountRow({
   const owner = facts.length > 0;
   const chips = Boolean(account.plan) || Boolean(account.signedOut);
   return (
-    <div className="plan-row" data-open={open || undefined}>
+    <div className={place ? "plan-row plan-row--placed" : "plan-row"} data-open={open || undefined} {...drop}>
+      {place}
       <button
         type="button"
         // The kit's line of a row that opens under it: the row's room is above the line and below what it unfolds.
@@ -223,7 +297,7 @@ function AccountRow({
           setOpen(!open);
         }}
       >
-        <ProviderLogo id={account.provider ?? account.kind} size="sm" off={account.signedOut} />
+        {!place && <ProviderLogo id={account.provider ?? account.kind} size="sm" off={account.signedOut} />}
         {/* Two parts: one line of words on a wide row, and on a phone the name beside the mark with the plan and
             whose it is under both. The space that parts them ends the name, so neither starts with it. */}
         <span className="plan-acct__name">
@@ -419,6 +493,50 @@ function AgentShares({ shares, window }: { shares: ReturnType<typeof accountShar
   );
 }
 
+const KIND_ICONS = { handoffs: "swap", people: "person", routines: "routines" } as const satisfies Record<
+  PlanUseKind,
+  string
+>;
+
+/**
+ * Under the agents, what the account's use was for ("Handoffs between agents · week 37% · 6.9M tokens"), and when
+ * handoffs led the week, a hint to ask the agent that took most of them directly.
+ */
+function KindShares({ account, window }: { account: PlanAccountUsage; window: string | null }) {
+  const { t, i18n } = useTranslation();
+  const { org } = useOrg();
+  const dir = useDirectory(org.id);
+  const kinds = accountKinds(account);
+  const target = account.hint ? dir.agentById.get(account.hint.agentId) : undefined;
+  if (kinds.length === 0) return null;
+  return (
+    <>
+      <p className="plan-kinds__label">{t("usage.kinds.label")}</p>
+      <div className="plan-shares plan-kinds">
+        {kinds.map((k) => (
+          <div key={k.kind} className="plan-shares__row">
+            <span className="plan-kinds__icon">
+              <Icon name={KIND_ICONS[k.kind]} size={16} />
+            </span>
+            <span>
+              <b>{t(`usage.kinds.${k.kind}`)}</b>
+              {kindFacts(t, i18n.language, window, k)}
+            </span>
+          </div>
+        ))}
+      </div>
+      {target && (
+        <Alert tone="neutral" icon="info" className="plan-kinds__hint">
+          {t("usage.hint.handoffs")}{" "}
+          <Link className="ac-link" to="/org/$orgId/dm/agent/$agentId" params={{ orgId: org.id, agentId: target.id }}>
+            {t("usage.hint.message", { name: target.name })}
+          </Link>
+        </Alert>
+      )}
+    </>
+  );
+}
+
 /** "US$ 0,32 de US$ 50,00 (padrão do workspace)": the closing "(…)" wraps as one piece, not split across lines. */
 function noteWhole(text: string) {
   const m = /^(.*\S)\s+(\(.+\))$/.exec(text);
@@ -480,5 +598,61 @@ export function ApiCard() {
         })}
       </div>
     </Card>
+  );
+}
+
+/**
+ * "Remover todos os logins do Grok" (issue #319): connecting one account for every agent used to leave one login per
+ * agent, and nobody removes eighteen of them one by one. One confirmation takes every Grok login the viewer owns, on
+ * every computer; another person's stays (the server refuses those anyway), and so does every other program's.
+ */
+function RemoveGrokLogins({ logins }: { logins: AiAccounts["accounts"] }) {
+  const { t } = useTranslation();
+  const { org } = useOrg();
+  const api = useApi();
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const computers = joinNames([...new Set(logins.map((l) => l.computer))], t);
+  const remove = async () => {
+    setBusy(true);
+    try {
+      for (const l of logins) await api.machines.removeAccount(org.id, l.machineId, l.id);
+      toast.show(t("aiAccounts.page.removeAllDone", { n: logins.length }));
+      setOpen(false);
+      for (const key of [keys.planUsage(org.id), keys.aiAccounts(org.id), keys.agents(org.id), keys.aiStatus(org.id)])
+        void qc.invalidateQueries({ queryKey: key });
+    } catch (error) {
+      toast.show(errorText(t, error), "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <Button size="sm" variant="link" className="ac-link--danger" disabled={busy} onClick={() => setOpen(true)}>
+        {t("aiAccounts.page.removeAllGrok")}
+      </Button>
+      {open && (
+        <Dialog
+          open
+          onOpenChange={(o) => !o && !busy && setOpen(false)}
+          title={t("aiAccounts.page.removeAllTitle", { n: logins.length })}
+          description={t("aiAccounts.page.removeAllText", { computers })}
+          closeLabel={t("common.close")}
+          width={440}
+        >
+          <DialogFooter>
+            <Button disabled={busy} onClick={() => setOpen(false)}>
+              {t("common.cancel")}
+            </Button>
+            <Button variant="danger" loading={busy} disabled={busy} onClick={() => void remove()}>
+              {t("aiAccounts.page.removeAllGrok")}
+            </Button>
+          </DialogFooter>
+        </Dialog>
+      )}
+    </>
   );
 }

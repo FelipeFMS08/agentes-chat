@@ -19,6 +19,7 @@ import {
   useAgentStatuses,
   useAiAccounts,
   useArchivedChannels,
+  useAuthConfig,
   useChannelCategories,
   useChannels,
   useConnections,
@@ -40,7 +41,14 @@ import {
 } from "@agenteschat/client";
 import { agentSections, groupOf } from "@agenteschat/client/lib/agent-groups";
 import { WORK_TICK_MS, workLine } from "@agenteschat/client/lib/agent-work";
-import { audienceChip, audienceNames, audienceNotice, canTalk, hiddenAgentIds } from "@agenteschat/client/lib/audience";
+import {
+  audienceChip,
+  audienceNames,
+  audienceNotice,
+  canTalk,
+  hiddenAgentIds,
+  listsAllAgents,
+} from "@agenteschat/client/lib/audience";
 import { workspaceNotes } from "@agenteschat/client/lib/deletion";
 import { ErrorBoundary } from "@agenteschat/client/lib/error-boundary";
 import { errorText } from "@agenteschat/client/lib/errors";
@@ -85,6 +93,7 @@ import {
   MenuSeparator,
   MenuSub,
   modKey,
+  OPEN_LAYER,
   PixelSpinner,
   Popover,
   PresenceBadge,
@@ -94,7 +103,7 @@ import {
   SkeletonGroup,
   selectionSkyUrl,
 } from "@agenteschat/ui";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import type { TFunction } from "i18next";
 import {
@@ -112,11 +121,11 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { useApi } from "@/api/context";
-import { useAuth } from "@/auth/context";
 import { useDirectory } from "@/hooks/useDirectory";
 import { agentLine, availabilityOf, personLine, useAgentPresence, usePersonPresence } from "@/hooks/usePresence";
 import { useServerPlace } from "@/hooks/useServerPlace";
 import { useSidebarPins } from "@/hooks/useSidebarPins";
+import { useSignOut } from "@/hooks/useSignOut";
 import { useUnreadTitle } from "@/hooks/useUnreadTitle";
 import { useWorkspaceGroups } from "@/hooks/useWorkspaceGroups";
 import { switchAccount } from "@/lib/accounts";
@@ -125,6 +134,7 @@ import { requestChannelDetails } from "@/lib/channel-details";
 import type { MenuEntry } from "@/lib/context-menu";
 import { onPhoneAsk, takePhoneAsk, thisMac } from "@/lib/desktop";
 import { entityMenu } from "@/lib/entity-menu";
+import { navigateAway } from "@/lib/navigate";
 import { useOpenParam } from "@/lib/open-param";
 import { markOpen } from "@/lib/perf";
 import { ownPlanLines, planNearLimit, planWord } from "@/lib/plan-usage";
@@ -201,28 +211,43 @@ function UnshownRow() {
 }
 export const unshownRow = () => <UnshownRow />;
 
-/** Tablet widths: the sidebar is always an icon rail (NavDrawer.tsx has the other breakpoints). */
+/** Tablet widths: the sidebar starts as an icon rail (NavDrawer.tsx has the other breakpoints). */
 export const TABLET_QUERY = "(min-width: 761px) and (max-width: 1199px)";
 
 /**
- * The sidebar shrunk to its icon rail at desktop widths (remembered), shared with the Mac app's title bar,
- * which carries the toggle there (DesktopTitleBar.tsx). In memory too, for when storage is blocked.
+ * The sidebar shrunk to its icon rail, shared with the Mac app's title bar, which carries the toggle there
+ * (DesktopTitleBar.tsx). Desktop widths remember the person's choice (in memory too, for when storage is blocked).
+ * Tablet widths start as the rail every time: their toggle opens the whole sidebar over the page until a link, Esc,
+ * a click outside or the toggle closes it, since the page's tablet layout has no room for it beside.
  */
 const SIDEBAR_EVENT = "agentes:sidebar";
 let sidebarCollapsed = storage.get(STORAGE_KEYS.sidebarCollapsed) === "1";
+let tabletOpen = false;
 const onSidebarChange = (cb: () => void) => {
   window.addEventListener(SIDEBAR_EVENT, cb);
   return () => window.removeEventListener(SIDEBAR_EVENT, cb);
 };
+const isTablet = () => typeof window.matchMedia === "function" && window.matchMedia(TABLET_QUERY).matches;
 export const toggleSidebar = () => {
-  sidebarCollapsed = !sidebarCollapsed;
-  storage.set(STORAGE_KEYS.sidebarCollapsed, sidebarCollapsed ? "1" : "0");
+  if (isTablet()) tabletOpen = !tabletOpen;
+  else {
+    sidebarCollapsed = !sidebarCollapsed;
+    storage.set(STORAGE_KEYS.sidebarCollapsed, sidebarCollapsed ? "1" : "0");
+  }
   window.dispatchEvent(new Event(SIDEBAR_EVENT));
 };
+/** A tablet's open sidebar back to its rail. */
+export const closeTabletSidebar = () => {
+  if (!tabletOpen) return;
+  tabletOpen = false;
+  window.dispatchEvent(new Event(SIDEBAR_EVENT));
+};
+/** Whether the sidebar is its icon rail at this width (a phone's drawer never reads it), and its toggle. */
 export function useSidebarCollapsed(): [boolean, () => void] {
+  const tablet = useMediaQuery(TABLET_QUERY);
   const collapsed = useSyncExternalStore(
     onSidebarChange,
-    () => sidebarCollapsed,
+    () => (tablet ? !tabletOpen : sidebarCollapsed),
     () => false,
   );
   return [collapsed, toggleSidebar];
@@ -408,11 +433,13 @@ export function Sidebar() {
   const working = dir.agents.filter((a) => busy.has(a.id)).length;
   // Narrow screens: the sidebar is a drawer (id, open state, close on link / swipe).
   const drawer = useNavDrawer();
-  // Desktop: the person can shrink the sidebar to an icon rail (remembered). Tablets always get the rail.
+  // Desktop: the person can shrink the sidebar to an icon rail (remembered). Tablets start as the rail and open over
+  // the page (`float`).
   const compact = useMediaQuery(COMPACT_QUERY);
   const tablet = useMediaQuery(TABLET_QUERY);
   const [collapsed, toggleCollapsed] = useSidebarCollapsed();
-  const rail = !compact && (tablet || collapsed);
+  const rail = !compact && collapsed;
+  const float = tablet && !collapsed;
 
   // AGENTES (ADR 0083 and its addendum): the agents that talk to me (who manages agents may list the rest), the ones in
   // no group, then each group of agents, each with my pinned ones on top and the rest in my order.
@@ -507,6 +534,39 @@ export function Sidebar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   // The list fades out at an edge only while there is more to scroll past it (no hard cut); re-checked as lists load.
   useScrollEdges(navRef, [channels.data, directs.length, shownAgents.length, groups.length, rail]);
+
+  // A tablet's open sidebar folds back on a new page, a width change, Esc (before the page sees it: Esc in a channel
+  // would stop an agent; an open menu closes first), a press outside it and focus leaving it (Tab past its end would
+  // land on the page under it).
+  const sideRef = useRef<HTMLElement>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new page or width closes it
+  useEffect(() => closeTabletSidebar(), [pathname, tablet]);
+  useEffect(() => {
+    if (!float) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented || document.querySelector(OPEN_LAYER)) return;
+      e.preventDefault();
+      // Focus on a row the rail hides would be lost: back to the toggle (the title bar's, in the Mac app).
+      if (sideRef.current?.contains(document.activeElement)) {
+        document.querySelector<HTMLElement>("[data-sidebar-toggle]")?.focus();
+      }
+      closeTabletSidebar();
+    };
+    // Not the title bar's toggle: its click closes it after the press.
+    const onOutside = (e: Event) => {
+      const t = e.target;
+      if (!(t instanceof Element) || sideRef.current?.contains(t) || t.closest("[data-sidebar-toggle]")) return;
+      if (!document.querySelector(OPEN_LAYER)) closeTabletSidebar();
+    };
+    window.addEventListener("keydown", onKey, true);
+    document.addEventListener("pointerdown", onOutside, true);
+    document.addEventListener("focusin", onOutside, true);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("pointerdown", onOutside, true);
+      document.removeEventListener("focusin", onOutside, true);
+    };
+  }, [float]);
 
   // The open conversation stays in sight: once per navigation (as soon as its row exists), a row
   // hidden past the list's edge is brought to the middle. Later scrolling is the person's.
@@ -762,7 +822,7 @@ export function Sidebar() {
             </SidebarSection>
           );
         })}
-        {team.length > shownAgents.length && (
+        {listsAllAgents(org) && team.length > shownAgents.length && (
           <Link to="/org/$orgId/team" params={{ orgId }} className="sidebar__item sidebar__see-all">
             <Icon name="agent" />
             <span className="sidebar__item-label">
@@ -857,8 +917,19 @@ export function Sidebar() {
       )}
     </Link>
   );
-  // The collapse shows at desktop widths only: tablets always have the rail, a phone the drawer.
-  const collapseLabel = collapsed ? t("shell.expandNav") : t("shell.collapseNav");
+  // The sidebar's toggle, in one place at every width: beside ⌘K (beside the bell in a personal workspace), under them
+  // in the rail. In a phone's drawer it closes the drawer.
+  const collapseLabel = compact ? t("shell.closeNav") : collapsed ? t("shell.expandNav") : t("shell.collapseNav");
+  const collapseProps = {
+    variant: "ghost",
+    iconOnly: true,
+    icon: "sidebar",
+    "data-sidebar-toggle": "",
+    "aria-label": collapseLabel,
+    title: collapseLabel,
+    "aria-expanded": compact || !collapsed,
+    onClick: compact ? () => drawer?.close({ restoreFocus: true }) : toggleCollapsed,
+  } as const;
   // The workspace header's line. Each count with its own plural: one summary string followed the people's, so
   // "1 agentes".
   const summary = overview.data
@@ -873,6 +944,8 @@ export function Sidebar() {
       className="sidebar"
       aria-label={t("shell.nav")}
       data-rail={rail}
+      data-float={float || undefined}
+      ref={sideRef}
       // Its faces' sizes follow the mode (the agents' and New agent's, ADR 0164).
       data-personal={personal || undefined}
       {...drawer?.navProps}
@@ -887,19 +960,7 @@ export function Sidebar() {
             <AccountMenu personal />
             <AgoraButton below={compact} className="sidebar__agora" />
             {bell}
-            {!compact && !tablet && (
-              <Button
-                variant="ghost"
-                size="sm"
-                iconOnly
-                icon="sidebar"
-                className="sidebar__head-collapse"
-                aria-label={collapseLabel}
-                title={collapseLabel}
-                aria-expanded={!collapsed}
-                onClick={toggleCollapsed}
-              />
-            )}
+            <Button {...collapseProps} size="sm" className="sidebar__head-collapse" />
           </div>
         ) : (
           <>
@@ -915,18 +976,7 @@ export function Sidebar() {
                 <Kbd>K</Kbd>
               </button>
               <AgoraButton below={compact} className="sidebar__agora" />
-              {!compact && !tablet && (
-                <Button
-                  variant="ghost"
-                  iconOnly
-                  icon="sidebar"
-                  className="sidebar__collapse"
-                  aria-label={collapseLabel}
-                  title={collapseLabel}
-                  aria-expanded={!collapsed}
-                  onClick={toggleCollapsed}
-                />
-              )}
+              <Button {...collapseProps} className="sidebar__collapse" />
             </div>
           </>
         )}
@@ -2076,12 +2126,24 @@ function UnreadCount({
  * opening down, also holds what the workspace menu held for one person: Your account, Settings and the person's
  * workspaces. Mounted once either way: the dialogs live here.
  */
+/** Mints the person's link to the referral service and leaves for it (ADR 0192), as `useOpenBilling` does. */
+function useOpenReferrals() {
+  const { t } = useTranslation();
+  const api = useApi();
+  const toast = useToast();
+  const here = useRouterState({ select: (s) => s.location.pathname });
+  return useMutation({
+    mutationFn: () => api.account.referralsLink(here),
+    onSuccess: ({ url }) => navigateAway(url),
+    onError: () => toast.show(t("referrals.failed"), "error"),
+    meta: { silent: true },
+  });
+}
+
 function AccountMenu({ personal = false }: { personal?: boolean }) {
   const { t, i18n } = useTranslation();
   const { org, me } = useOrg();
   const dir = useDirectory(org.id);
-  const auth = useAuth();
-  const qc = useQueryClient();
   const navigate = useNavigate();
   const compact = useMediaQuery(COMPACT_QUERY);
   const saveStatus = useSaveStatus();
@@ -2117,12 +2179,9 @@ function AccountMenu({ personal = false }: { personal?: boolean }) {
   const who = [me.user.name, line?.text ?? presenceWord].filter(Boolean).join(" · ");
   const under = Boolean(line || presenceWord);
 
-  const signOut = async () => {
-    await auth.signOut();
-    storage.set(STORAGE_KEYS.signedOut, "1");
-    qc.clear();
-    await navigate({ to: "/login" });
-  };
+  const { signOut } = useSignOut();
+  const referrals = useAuthConfig().data?.referralsUrl;
+  const openReferrals = useOpenReferrals();
   const openSettings = (section?: SettingsSection) =>
     void (section
       ? navigate({ to: "/org/$orgId/settings/$section", params: { orgId: org.id, section } })
@@ -2243,6 +2302,11 @@ function AccountMenu({ personal = false }: { personal?: boolean }) {
         <MenuItem icon="settings" onSelect={() => openSettings(personal ? undefined : "account")}>
           {t("shell.settings")}
         </MenuItem>
+        {referrals && (
+          <MenuItem icon="coin" disabled={openReferrals.isPending} onSelect={() => openReferrals.mutate()}>
+            {t("referrals.open")}
+          </MenuItem>
+        )}
         {import.meta.env.DEV && (
           <MenuItem icon="grid" onSelect={() => void navigate({ to: "/dev/gallery" })}>
             {t("shell.gallery")}
@@ -2283,7 +2347,11 @@ function useWorkspaceLook() {
     return o !== undefined && isPersonal(o) && o.role === "owner";
   };
   const several = me.organizations.filter((o) => mine(o.id)).length > 1;
-  return (o: { id: string; name: string; logo?: string | null }, face: "sm" | "md", mark: number) =>
+  return (
+    o: { id: string; name: string; logo?: string | null; accent?: string | null },
+    face: "sm" | "md",
+    mark: number,
+  ) =>
     mine(o.id)
       ? {
           leading: <Avatar kind="person" name={me.user.name} imageUrl={me.user.image} size={face} />,
@@ -2291,7 +2359,13 @@ function useWorkspaceLook() {
           sub: null,
           personal: true,
         }
-      : { leading: <OrgMark logo={o.logo} size={mark} />, name: o.name, sub: null, personal: false };
+      : {
+          // Each workspace in its own accent: the engine's `sky` is the active one's.
+          leading: <OrgMark logo={o.logo} accent={o.accent ?? null} size={mark} />,
+          name: o.name,
+          sub: null,
+          personal: false,
+        };
 }
 
 /**
@@ -2536,7 +2610,7 @@ function WorkspaceMenuOptions({ onDone }: { onDone: () => void }) {
   const overview = useOverview(org.id);
   const managesAgents = can(org, "manage_agents");
   const connections = useConnections(org.id);
-  const skills = useSkills(org.id, managesAgents);
+  const skills = useSkills(org.id);
   const invite = useInviteDialog();
   const go = (section?: SettingsSection) => () => {
     onDone();
@@ -2600,16 +2674,9 @@ function WorkspaceMenuOptions({ onDone }: { onDone: () => void }) {
             {t("settings.section.access")}
           </MenuOverlayItem>
         )}
-        {managesAgents && (
-          <MenuOverlayItem
-            icon="book"
-            shortcut={next()}
-            count={skills.data?.length || undefined}
-            onSelect={go("skills")}
-          >
-            {t("settings.section.skills")}
-          </MenuOverlayItem>
-        )}
+        <MenuOverlayItem icon="book" shortcut={next()} count={skills.data?.length || undefined} onSelect={go("skills")}>
+          {t("settings.section.skills")}
+        </MenuOverlayItem>
         <MenuOverlayItem icon="settings" shortcut={next()} onSelect={go()}>
           {t("shell.workspaceSettings")}
         </MenuOverlayItem>

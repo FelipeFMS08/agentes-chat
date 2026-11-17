@@ -20,7 +20,7 @@ import { type CanceledReturn, canceledReturns, type PendingReturn, pendingReturn
 import { replyExcerpt } from "./messages";
 import { can, requireActiveMembership } from "./organizations";
 import { pendingIds } from "./recovery";
-import { shownStatusSql } from "./runs";
+import { canceledBySql, personStopOf, shownStatusSql } from "./runs";
 import { channelReaderSql } from "./task-access";
 import { mayContinuePause } from "./usage-pause";
 
@@ -213,8 +213,8 @@ export interface EndedTask {
   routine: { id: string; name: string } | null;
   startedAt: string | null;
   finishedAt: string;
-  /** Stopped by a person: who. */
-  stoppedBy: { userId: string; name: string } | null;
+  /** Stopped by a person: who, and the agent that stopped it at their word (the right hand). */
+  stoppedBy: { userId: string; name: string; agentId?: string } | null;
 }
 
 /** The workspace's work the caller may not see: how much, never what. */
@@ -364,7 +364,7 @@ async function visibleRuns(
         ${which.active ? sql`consult.question` : sql`null`} as question,
         rt.id as routine_id, rt.name as routine_name, w.title as work_title, w.plan as work_plan,
         last.data as last_data, last.created_at as last_at,
-        (select count(*) from ${agentRunSteps} s where s.run_id = r.id and s.kind = 'tool_call') as steps,
+        ${which.active ? sql`(select count(*) from ${agentRunSteps} s where s.run_id = r.id and s.kind = 'tool_call')` : sql`0`} as steps,
         su.name as stopper_name,
         coalesce(r.transcript->'waitingForBrain', case when r.status = 'running' and r.waiting_machine_id is not null
           then '{"code":"busy"}'::jsonb end) as wait, pause.data as wait_pause, r.waiting_machine_id,
@@ -396,7 +396,7 @@ async function visibleRuns(
           : sql``
       }
       left join ${users} ru on ru.id = trig.author_user_id
-      left join ${users} su on r.error like 'canceled_by:%' and su.id = substring(r.error from 13)
+      left join ${users} su on su.id = ${canceledBySql(sql`r.error`)}
       left join ${routineRuns} rr on rr.org_id = ${orgId}::uuid and rr.agent_run_id = r.id
       left join ${routines} rt on rt.id = rr.routine_id
       left join lateral (
@@ -728,7 +728,7 @@ export async function taskManager(
     if (place) task.line = place;
   }
   const endedTasks: EndedTask[] = ended.map((r) => {
-    const by = r.error?.startsWith("canceled_by:") ? r.error.slice("canceled_by:".length) : null;
+    const stop = personStopOf(r.error);
     return {
       runId: r.id,
       agentId: r.agent_id,
@@ -739,7 +739,9 @@ export async function taskManager(
       routine: routineOf(r),
       startedAt: iso(r.started_at),
       finishedAt: iso(r.finished_at) as string,
-      stoppedBy: by ? { userId: by, name: r.stopper_name ?? "" } : null,
+      stoppedBy: stop
+        ? { userId: stop.userId, name: r.stopper_name ?? "", ...(stop.agentId ? { agentId: stop.agentId } : {}) }
+        : null,
     };
   });
   return {
@@ -802,13 +804,19 @@ async function computerSummaries(db: Database, orgId: string): Promise<ComputerS
  * Tool calls per minute, per agent, over the last `ACTIVITY_MINUTES`: the line on each agent's card. Counts only (no
  * content), from runs that were on in the last hour.
  */
-export async function agentActivity(db: Database, orgId: string, now = new Date()): Promise<Record<string, number[]>> {
+export const agentActivity = (db: Database, orgId: string, now = new Date()) =>
+  activityCache.getOrLoad(orgId, () => loadAgentActivity(db, orgId, now));
+
+// ponytail: per-process, 5 s stale at most: every viewer of a workspace polls this every few seconds, the line is per minute.
+const activityCache = new TtlCache<Record<string, number[]>>(5_000);
+
+async function loadAgentActivity(db: Database, orgId: string, now: Date): Promise<Record<string, number[]>> {
   const from = new Date(now.getTime() - ACTIVITY_MINUTES * 60_000);
   const rows = rowsOf<{ agent_id: string; ago: number | string; n: number | string }>(
     await db.execute(sql`select r.agent_id,
         floor(extract(epoch from (${now.toISOString()}::timestamptz - s.created_at)) / 60)::int as ago, count(*) as n
       from ${agentRuns} r
-      join ${agentRunSteps} s on s.run_id = r.id and s.kind = 'tool_call'
+      join ${agentRunSteps} s on s.run_id = r.id and s.org_id = ${orgId}::uuid and s.kind = 'tool_call'
         and s.created_at > ${from.toISOString()}::timestamptz
       where r.org_id = ${orgId}::uuid
         and r.created_at > ${new Date(now.getTime() - 24 * 3600_000).toISOString()}::timestamptz

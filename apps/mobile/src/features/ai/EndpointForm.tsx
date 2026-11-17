@@ -127,6 +127,11 @@ export function EndpointForm({
   if (saved) {
     return (
       <View style={styles.gap}>
+        {saved.key.reused ? (
+          <Note icon="check" live inset>
+            {t("settings.keyResaved")}
+          </Note>
+        ) : null}
         <GroupedHeader>{t("endpoint.results")}</GroupedHeader>
         <GroupedList>
           {checksInOrder(draft, saved.checks).map((r) => (
@@ -254,12 +259,19 @@ export function EndpointForm({
             </View>
           </GroupedField>
         </GroupedList>
+        {/* Under the field, on the footers' edge: what it said about what was typed. */}
         {typedWrong ? (
-          <Text variant="small" tone="danger" accessibilityLiveRegion="polite">
-            {t("endpoint.modelInvalid")}
-          </Text>
+          <GroupedFooter>
+            <Text variant="footnote" tone="danger" accessibilityLiveRegion="polite">
+              {t("endpoint.modelInvalid")}
+            </Text>
+          </GroupedFooter>
         ) : null}
-        {listError ? <Note icon="x">{t("endpoint.listFailed", { error: listError })}</Note> : null}
+        {listError ? (
+          <Note icon="x" inset>
+            {t("endpoint.listFailed", { error: listError })}
+          </Note>
+        ) : null}
         {draft.models.length > 0 ? (
           <>
             <GroupedHeader>{t("endpoint.choose")}</GroupedHeader>
@@ -273,9 +285,7 @@ export function EndpointForm({
               />
             ) : null}
             {shown.length === 0 ? (
-              <Text variant="small" tone="muted">
-                {t("endpoint.noMatch", { query: query.trim() })}
-              </Text>
+              <GroupedFooter>{t("endpoint.noMatch", { query: query.trim() })}</GroupedFooter>
             ) : (
               <GroupedList>
                 {shown.map((m) => (
@@ -320,9 +330,11 @@ export function EndpointForm({
                       </GroupedField>
                     </GroupedList>
                     {problem ? (
-                      <Text variant="small" tone="danger" accessibilityLiveRegion="polite">
-                        {t(problem === "both" ? "endpoint.priceBoth" : "endpoint.priceInvalid")}
-                      </Text>
+                      <GroupedFooter>
+                        <Text variant="footnote" tone="danger" accessibilityLiveRegion="polite">
+                          {t(problem === "both" ? "endpoint.priceBoth" : "endpoint.priceInvalid")}
+                        </Text>
+                      </GroupedFooter>
                     ) : null}
                   </View>
                 );
@@ -331,10 +343,12 @@ export function EndpointForm({
         ) : null}
       </Locked>
       {draft.models.some((m) => m.on && !m.input.trim() && !m.output.trim()) ? (
-        <Note icon="info">{t("endpoint.unpriced")}</Note>
+        <Note icon="info" inset>
+          {t("endpoint.unpriced")}
+        </Note>
       ) : null}
       {failed ? (
-        <Note icon="x" live>
+        <Note icon="x" live inset>
           {t("mobile.ai.failed")}
         </Note>
       ) : null}

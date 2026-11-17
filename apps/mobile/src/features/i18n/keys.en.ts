@@ -24,7 +24,6 @@ export const featureKeysEn = {
     position: "{{at}} of {{count}}.",
     channelPosition: "{{at}} of {{count}}.",
     itsChannels: "Channels",
-    seeAll: "See all",
   },
   blocks: {
     send: "Send",
@@ -198,16 +197,12 @@ export const featureKeysEn = {
       text: "It may be down or outside your network. Your chats show up on their own when it's back.",
       kept: "Showing what was already in the app.",
     },
-    section: {
-      agents: "Agents",
-      channels: "Channels",
-      people: "People",
-    },
-    seeAll: {
-      agents: "See all agents",
-      channels: "See all channels",
-      people: "See all people",
-    },
+    /** Conversas' strip of what the person pinned (the web sidebar's pins), under Início's widgets. */
+    pinned: "Pinned",
+    /** Conversas' one list: every chat by its latest activity, with no grouping. */
+    recent: "Recent",
+    /** Under Recentes' first rows: the whole list. */
+    seeAll: "See all chats",
     wait: {
       verb: {
         approval: "needs your ok",
@@ -383,8 +378,15 @@ export const featureKeysEn = {
     profile: "Profile",
     here_one: "{{count}} here",
     here_other: "{{count}} here",
+    membersAdd: "Add",
+    membersAdded_one: "{{count}} added to #{{channel}}",
+    membersAdded_other: "{{count}} added to #{{channel}}",
+    memberRemoved: "{{name}} is out of #{{channel}}",
+    muted: "#{{channel}} muted",
+    unmuted: "#{{channel}} unmuted",
     headerAgent: "{{who}}. Open the profile",
     headerChannel: "{{who}}. Options",
+    headerMembers: "{{who}}. See who is here",
     switchHint: "Hold to switch conversations",
     switchTitle: "Switch conversation",
     switchSearch: "Search conversations",
@@ -470,26 +472,21 @@ export const featureKeysEn = {
     /** The emoji palette in a message's menu. */
     react: "React",
     attach: {
-      /** The dashed tile after the pictures waiting above the field. */
-      more: "Add another photo or file",
       remove: "Remove {{name}}",
       /** What a screen reader says of a picture waiting to be sent. */
       waiting: "{{name}}, waiting to be sent",
       /** While its upload runs. */
       sending: "{{name}}, sending",
+      /** One that didn't go: it stays, and send tries it again. */
+      failed: "{{name}}, didn't go: send to try again",
+      /** A picker still handing its files over (a video being converted). */
+      preparing: "Getting the files ready…",
       tooMany: "Up to {{count}} files per message.",
     },
     /** Swiping a message to the right. */
     swipeReply: "Swipe right to reply",
     // intentional: chat
     intent: {
-      suggest: {
-        merge: "Go ahead and merge",
-        review: "Ask {{name}} to review first",
-        seeChange: "Show me what changed",
-        summarize: "Sum it up in 3 points",
-        nextStep: "What's the next step?",
-      },
       arrived: "{{name}} joined the team",
       meet: "Your first conversation with {{name}}",
       roleIntro: "{{role}} on your team. Ask in plain words.",
@@ -640,7 +637,6 @@ export const featureKeysEn = {
     minuteLess: "{{n}} minutes earlier",
     minuteMore: "{{n}} minutes later",
     submit: "Remind me at this time",
-    quick: "See quick times",
     done: "Reminder set",
     error: {
       noAgent: "No agent here can remind you",
@@ -699,6 +695,7 @@ export const featureKeysEn = {
     title: "New mission",
     intro: "The agent makes a plan and only starts when you say so.",
     placeholder: "What needs to get done?",
+    who: "Who does it",
     submit: "Ask for a plan",
     created: "{{name}} is making the plan",
     noAgents: "No agent can run missions yet. Connect a computer on the website.",
@@ -865,9 +862,6 @@ export const featureKeysEn = {
     keepEditing: "Keep editing",
   },
   newAgent: {
-    leaveTitle: "Leave without creating?",
-    leaveText: "The agent you started won't be created.",
-    keepGoing: "Keep creating",
     /** The second step asks who the agent is: a question and one line, as the other steps. */
     identityQuestion: "Who is the agent?",
     identityLead: "Its name, how to call it in the chat, and its face.",
@@ -902,7 +896,6 @@ export const featureKeysEn = {
         "The phone doesn't open .zip or .tar.gz files. In the Files app, tap the .zip to unzip it and pick the files inside, or import on the computer.",
       privacy: "Read on this phone. Key and login files are never opened.",
       also: "Also comes along",
-      change: "Change",
       arrived_one: "{{name}} arrived",
       arrived_other: "{{count}} agents arrived",
       partial: "{{done}} of {{total}} arrived. Importing again brings the rest.",
@@ -927,6 +920,12 @@ export const featureKeysEn = {
     taskPlaceholder: "What needs to get done?",
     sendTask: "Send task",
     taskSent: "Task sent",
+    /** Work nobody asked for: the confirmation before "Forget these answers" drops the remembered ones. */
+    brakes: {
+      forgetTitle: "Forget these answers?",
+      forgetText: "{{name}} asks again before this kind of work.",
+      forgetText_female: "{{name}} asks again before this kind of work.",
+    },
   },
   activity: {
     title: "Activity",
@@ -941,6 +940,9 @@ export const featureKeysEn = {
     /** The toast after a swipe marked an item done, with the way back. */
     doneToast: "Done",
     undo: "Undo",
+    /** The toast after "Clear all" (named after the Done pill), with the way back. */
+    doneAllToast_one: "{{count}} moved to Done",
+    doneAllToast_other: "{{count}} moved to Done",
     day: {
       today: "Today",
       yesterday: "Yesterday",
@@ -1273,6 +1275,8 @@ export const featureKeysEn = {
     /** No password, and no way to sign in again here: the website adds one. */
     addPasswordFirst: "Add a password to your account on the website first, then type it here.",
     addPasswordWeb: "Add a password on the website",
+    /** The owner of a server the desktop app runs, with no password: that app's sign-in is their proof. */
+    onThisComputer: "Delete it in the agentes.chat app on the computer that runs this server.",
     otherAccount: "You signed in to another account. Nothing was deleted.",
     hold: "Hold to delete",
   },
@@ -1292,7 +1296,8 @@ export const featureKeysEn = {
       file: "File",
     },
     more: "More options",
-    send: "Send",
+    /** The system's share sheet with the file itself (the file screen's bar, the picture viewer's row). */
+    sendCopy: "Send a copy",
     savePhotos: "Save to Photos",
     drive: "View in Drive",
     saved: "Saved to Photos",
@@ -1307,6 +1312,8 @@ export const featureKeysEn = {
     /** The picture viewer's buttons on the picture's sides. */
     previous: "Previous picture",
     next: "Next picture",
+    /** The file screen's heading for a type the app doesn't draw (the file's name is already the bar's title). */
+    noPreviewTitle: "No preview",
     noPreview: "This file doesn't open in the app. Send it to another app to open it.",
     /** The video player's controls (a message's video and the file screen). */
     video: {
@@ -1318,6 +1325,8 @@ export const featureKeysEn = {
       unmute: "Unmute",
       fullscreen: "Full screen",
       open: "Open",
+      /** A video this phone can't play, in the viewer: it can still be sent, shared or opened in the Drive. */
+      cantPlay: "This video can't play on this phone.",
     },
   },
   issues: {
@@ -1406,13 +1415,11 @@ export const featureKeysEn = {
   drive: {
     title: "Drive",
     search: "Search the Drive",
-    types: "File types",
     type: { all: "All", documents: "Documents", images: "Images", tables: "Tables", diffs: "Diffs" },
     section: { today: "Today", week: "This week" },
     kind: { document: "Document", table: "Table", diff: "Diff", image: "Image", file: "File" },
     by: "{{name}} · {{when}}",
     noResults: "Nothing with these filters.",
-    loadFailed: "Couldn't load the Drive.",
     more: "Show more",
   },
   // Wiki (the rest of its words are the web's, `wiki.*`).
@@ -1485,8 +1492,6 @@ export const featureKeysEn = {
 
   // Rotinas (the rest of its words are the web's, `routines.*`).
   routines: {
-    loadFailed: "Couldn't load the routines.",
-    anyAgent: "All agents",
     create: "Create",
     /** The form's "when" as rows, each value picked from the system's list. */
     when: {
@@ -1883,6 +1888,7 @@ export const featureKeysEn = {
       ui_automation_off: "UI Automation is off",
       xcode_missing: "The Mac needs Xcode",
       xcode_too_old: "Xcode is too old for this iPhone",
+      ios_behind_xcode: "Update this iPhone's iOS",
       device_support: "The Mac is preparing this iPhone",
       helper_missing: "The test helper isn't set up yet",
       helper_expired: "The test helper needs renewing",
@@ -2116,6 +2122,7 @@ export const featureKeysEn = {
       waitingFor: "{{names}} is waiting for {{device}} for {{person}}",
       tool_request: "{{names}} asks you to turn on {{tool}} on your {{device}}",
       cli_request: "{{names}} asks you to install {{tool}} on your {{device}}",
+      folder_request: "{{names}} asks for the folder {{path}} on your {{device}}",
       allowOnce: "Allow once",
       always: "Always allow {{name}}",
       no: "No",
@@ -2130,6 +2137,9 @@ export const featureKeysEn = {
       stop: "Stop waiting",
       useInstead: "Use {{name}} instead",
       none: "No other device you can use is ready.",
+      /** After "Try now" and "Stop waiting": what the button did, said at once. */
+      tried: "Trying {{device}} again.",
+      stopped: "No longer waiting for {{device}}.",
     },
   },
   connectors: {
@@ -2257,8 +2267,6 @@ export const featureKeysEn = {
   },
   joinRequests: {
     share: "Share the link",
-    roles: "Roles",
-    rolesHint: "They join with the roles turned on. With none, they may do what Everyone may.",
   },
   humanCheck: {
     title: "Quick check",
@@ -2266,16 +2274,9 @@ export const featureKeysEn = {
   },
   /** Convidar pessoas and the sent invitations' sheet (ADR 0090); the other words are the shared `members.*`. */
   invitePeople: {
-    emailsHelp: "Paste a list or type. Each person gets an email and joins right away.",
-    here: "Already here",
-    invited: "Already invited",
-    fix: "Check this",
-    channels: "Channels",
     optional: "Optional",
     ok: "OK",
     noteHelp: "It shows in the email with your name. Up to {{max}} characters.",
-    roleHelp: "Changes what the person gets on joining.",
-    remove: "Take off the list",
     sendAgain: "Send again",
     cancelTitle: "Cancel the invitation to {{email}}?",
     cancelText: "Its link stops opening.",
@@ -2435,7 +2436,6 @@ export const featureKeysEn = {
     noMatch: "No role matches “{{q}}”.",
     tooMany: "This workspace already has 100 roles. Delete one to create another.",
     loadFailed: "Couldn't load the roles. {{cause}}",
-    backToList: "Back to roles",
     /** A role nobody holds yet, at the start of its glance line. */
     nobody: "Nobody",
     /** What a role adds to what Everyone can, under its name: "+3 permissions · +2 channels · +1 agent". */
@@ -2833,7 +2833,6 @@ export const featureKeysEn = {
   // Dashboards on the phone (ADR 0135); the rest of their words are the web's, `dashboards.*` and `widgets.*`.
   dashboards: {
     homeRow: "Only you · your own widgets",
-    loadFailed: "Couldn't load the dashboards.",
     create: "Create",
     routineTarget: "its widget",
     pin: {

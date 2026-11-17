@@ -20,6 +20,7 @@ import type {
   AccountDeletionPlan,
   AccountLoginStart,
   AccountLoginStatus,
+  AccountOrderGroup,
   ActiveRun,
   Agent,
   AgentAccess,
@@ -51,6 +52,7 @@ import type {
   Approval,
   ApprovalCovers,
   ApprovalRule,
+  ApprovalsLevel,
   AppsList,
   ArchivedChannel,
   Artifact,
@@ -591,7 +593,8 @@ export function createHttpApi(options: TransportOptions = {}): HttpApi {
           })
         ).offer,
       jev: () => nullOn(404, () => request<JevKey>("/api/app/jev")),
-      saveJev: (apiKey) => request<JevKey>("/api/app/jev", { method: "PUT", json: { apiKey } }),
+      saveJev: (input) =>
+        request<JevKey>("/api/app/jev", { method: "PUT", json: typeof input === "string" ? { apiKey: input } : input }),
       checkJev: () => request<JevKey>("/api/app/jev/check", { method: "POST" }),
       removeJev: () => request<JevKey>("/api/app/jev", { method: "DELETE" }),
       gifKey: () => nullOn(404, () => request<GifKey>("/api/app/gif-key")),
@@ -603,6 +606,8 @@ export function createHttpApi(options: TransportOptions = {}): HttpApi {
     },
     account: {
       authConfig: () => request<AuthConfig>("/api/app/auth-config"),
+      referralsLink: (returnTo) =>
+        request<{ url: string; expiresAt: string }>("/api/app/referrals-link", { json: { returnTo } }),
       signInOptions: (input, humanCheck) =>
         request<SignInOptions>("/api/app/sign-in-options", { json: input, headers: humanCheckHeaders(humanCheck) }),
       me: () => nullOn(401, () => request<Me>("/api/app/me")),
@@ -659,6 +664,8 @@ export function createHttpApi(options: TransportOptions = {}): HttpApi {
       removeAvatar: (orgId) => request<void>(`${org(orgId)}/me/avatar`, { method: "DELETE" }),
       setLogo: (orgId, input) => request<{ logo: string }>(`${org(orgId)}/logo`, { method: "PUT", json: input }),
       removeLogo: (orgId) => request<void>(`${org(orgId)}/logo`, { method: "DELETE" }),
+      setAccent: (orgId, accent) =>
+        request<{ accent: string | null }>(`${org(orgId)}/accent`, { method: "PUT", json: { accent } }),
       billingLink: (orgId, from, returnTo, plan) =>
         request<{ url: string; expiresAt: string }>(`${org(orgId)}/billing-link`, {
           json: { from, returnTo, ...(plan ? { plan } : {}) },
@@ -673,6 +680,13 @@ export function createHttpApi(options: TransportOptions = {}): HttpApi {
         (await request<{ style: AgentStyle }>(`${org(orgId)}/me/agent-style`, { method: "PUT", json: { style } }))
           .style,
       setChatPrefs: (orgId, patch) => request<ChatPrefs>(`${org(orgId)}/me/chat`, { method: "PUT", json: patch }),
+      setConversationWallpaper: (orgId, channelId, wallpaper) =>
+        request<ChatPrefs>(
+          `${org(orgId)}/channels/${enc(channelId)}/wallpaper`,
+          wallpaper ? { method: "PUT", json: { wallpaper } } : { method: "DELETE" },
+        ),
+      uploadWallpaperPhoto: (orgId, input) =>
+        request<{ url: string }>(`${org(orgId)}/me/wallpaper-photo`, { method: "PUT", json: input }),
       sidebarItems: async (orgId) => (await request<{ items: SidebarItems }>(`${org(orgId)}/me/sidebar`)).items,
       setSidebarItem: async (orgId, item, place) =>
         (await request<{ items: SidebarItems }>(`${org(orgId)}/me/sidebar`, { method: "PATCH", json: { item, place } }))
@@ -731,6 +745,11 @@ export function createHttpApi(options: TransportOptions = {}): HttpApi {
       settings: (orgId) => request<OrgSettings>(`${org(orgId)}/settings`),
       updateSettings: (orgId, input) =>
         request<OrgSettings>(`${org(orgId)}/settings`, { method: "PATCH", json: input }),
+      setApprovalsLevel: (orgId, input) =>
+        request<{ level: ApprovalsLevel; ownAgents: number }>(`${org(orgId)}/approvals-level`, {
+          method: "PUT",
+          json: input,
+        }),
       overview: (orgId) => request<OrgOverview>(`${org(orgId)}/overview`),
       people: async (orgId) => (await request<{ people: Person[] }>(`${org(orgId)}/people`)).people,
       allInvitations: async (orgId) =>
@@ -916,6 +935,8 @@ export function createHttpApi(options: TransportOptions = {}): HttpApi {
         }),
       makeDefaultCredential: (orgId, id) =>
         request<Credential>(`${org(orgId)}/credentials/${enc(id)}/make-default`, { json: {} }),
+      removeCredentialCopies: (orgId, id) =>
+        request<{ removed: number }>(`${org(orgId)}/credentials/${enc(id)}/remove-copies`, { json: {} }),
       checkCredential: (orgId, id) =>
         request<{ check: "ok" | "unchecked" }>(`${org(orgId)}/credentials/${enc(id)}/check`, { json: {} }),
       platformKeyAvailable: async (orgId) =>
@@ -1028,6 +1049,8 @@ export function createHttpApi(options: TransportOptions = {}): HttpApi {
         if (input.threadId) form.set("threadId", input.threadId);
         if (input.replyTo) form.set("replyTo", input.replyTo);
         if (input.language) form.set("language", input.language);
+        if (input.text?.trim()) form.set("text", input.text);
+        if (input.attachments?.length) form.set("attachments", JSON.stringify(input.attachments));
         return files.upload<{ clipId: string }>(`${org(orgId)}/channels/${enc(channelId)}/voice`, form);
       },
     },
@@ -1388,6 +1411,12 @@ export function createHttpApi(options: TransportOptions = {}): HttpApi {
           method: "PUT",
           json: { serves },
         }),
+      accountOrder: (orgId) => request<{ groups: AccountOrderGroup[] }>(`${org(orgId)}/ai-accounts/order`),
+      moveAccountInOrder: (orgId, accountId, index) =>
+        request<AccountOrderGroup>(`${org(orgId)}/ai-accounts/${enc(accountId)}/order`, {
+          method: "PUT",
+          json: { index },
+        }),
       renameAccount: (orgId, machineId, accountId, label) =>
         request<MachineAccount>(`${org(orgId)}/machines/${enc(machineId)}/accounts/${enc(accountId)}`, {
           method: "PATCH",
@@ -1415,10 +1444,10 @@ export function createHttpApi(options: TransportOptions = {}): HttpApi {
           signal: upload?.signal,
           onUploadProgress: upload?.onProgress,
         }),
-      importPicked: async (orgId, url, paths, forAgentId) =>
+      importPicked: async (orgId, url, paths, forAgentId, personal) =>
         (
           await request<{ skills: SkillDetail[] }>(`${org(orgId)}/skills/import`, {
-            json: { url, paths, ...(forAgentId ? { forAgentId } : {}) },
+            json: { url, paths, ...(forAgentId ? { forAgentId } : {}), ...(personal ? { personal } : {}) },
           })
         ).skills,
       update: (orgId, id, patch) =>
@@ -1860,6 +1889,8 @@ export function createHttpApi(options: TransportOptions = {}): HttpApi {
         request<AppNotification>(`${org(orgId)}/notifications/${enc(id)}/snooze`, { json: { until } }),
       readAll: (orgId, filter) =>
         request<{ ids: string[] }>(`${org(orgId)}/notifications/read-all`, { json: filter ? { filter } : {} }),
+      doneAll: (orgId, filter) =>
+        request<{ ids: string[] }>(`${org(orgId)}/notifications/done-all`, { json: filter ? { filter } : {} }),
       prefs: (orgId) => request<NoticePrefs>(`${org(orgId)}/notification-prefs`),
       setPref: (orgId, category, on) =>
         request<NoticePrefs>(`${org(orgId)}/notification-prefs`, { method: "PUT", json: { category, on } }),

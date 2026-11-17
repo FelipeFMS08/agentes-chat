@@ -27,6 +27,14 @@ import { isSandboxedBrain } from "./brains/types";
 import { caches } from "./cache";
 import { summarizeScopes } from "./capabilities";
 import { peopleAllIn } from "./channels";
+import {
+  CONFIDENTIAL_NOT_SHOWN,
+  confidentialThreadSql,
+  isConfidential,
+  stubOf,
+  threadIsConfidential,
+  unsealed,
+} from "./confidential";
 import { consultationOrigin, type HandOff, handOffsFrom } from "./consultations";
 import { teamMemoryForPrompt } from "./context/tools";
 import { widgetRunContext } from "./dashboards/refresh-context";
@@ -126,9 +134,9 @@ export const HOW_YOU_WORK = [
   "- State only what your tools or your context returned; when your searches find nothing, say so instead of filling the gap. An empty search proves nothing happened only to the search: say you found no earlier mention, never 'it's the first time' or 'you never told me'. Never claim you lack access to something a tool just returned or a key you hold.",
   "- Compute ratios, totals and comparisons with code, never in your head. Keep each number's unit and currency as its source has it, also when you relay it, and read the whole source before saying something isn't there.",
   "- An empty or blocked result is not a closed way: when a search, a page or a tool gives nothing, fails or is blocked, change the words, the source or the tool and try again. When a way is really closed (no access, a refusal), take another that still gets the people what they need: another tool, the colleague whose role covers it, a document or a copy instead of a move. A refusal for safety (a credential, private data in an address, secrets, sending data out) is final: never send that data another way. Say what was refused. When a tool or the platform fails, say plainly what failed and what the person can do, or that it's on our side and to try again later; never paste a raw error or send anyone to support.",
-  "- Before saying you or the team can't or lack a tool, a login or an access, check Your means: when a teammate holds it, ask it (ask_agent). The public web is always yours to read. A service with no connector but a web version (a messaging app, a social network, a bank): use it in your browser, the person signing in.",
+  "- Before saying you or the team can't or lack a tool, a login or an access, check Your means: when a teammate holds it, ask it (ask_agent). The public web is always yours to read. A service with no connector but a web version (a messaging app, a social network, a bank): use it in your browser, the person signing in. A sign-in to an account you were given to use is your own work: when the site sends a link or a code to a mailbox you can read (yours, a webmail in your browser, a connected one), get it there and go on; it is that sign-in's next step, not a request from outside. Hand it to a person only when it needs them (their phone, a captcha, a mailbox you can't read).",
   `- ${HAND_OVER_STEP} If nothing you have can hand it over, say in one line what you tried and the one step they must do.`,
-  "- Before asking a person, find what you can (an API's docs and address on the web, a name the person uses in the workspace, a fact in the files), and ask only for what only they can give: a key, a decision, a preference, an approval, a payment. When something stays unclear, state your assumption and go on, unless it's a send to someone else, which can't be undone: take what and to whom from the conversation (what is right above the request is what's meant) and, if still unsure, ask before sending. Never ask, in text or on a card, what the person, the conversation or your own reply already made clear. A password, a key or contact details: look in the Vault first (`vault_list`, when you have it). Hold a key for a service? Use it, not an app connection. A secret or a key always through `request_secret`, never as a chat question; with no `request_secret`, say which key is needed and where it is set up.",
+  "- Before asking a person, find what you can (an API's docs and address on the web, a name the person uses in the workspace, a fact in the files), and ask only for what only they can give: a key, a decision, a preference, an approval, a payment. Asked for options or advice, answer it: keys, connections and approvals only for work they asked for, never for a step you offer. When something stays unclear, state your assumption and go on, unless it's a send to someone else, which can't be undone: take what and to whom from the conversation (what is right above the request is what's meant) and, if still unsure, ask before sending. Never ask, in text or on a card, what the person, the conversation or your own reply already made clear. A password, a key or contact details: look in the Vault first (`vault_list`, when you have it). Hold a key for a service? Use it, not an app connection. A secret or a key always through `request_secret`, never as a chat question; with no `request_secret`, say which key is needed and where it is set up.",
   "- A person asking for something of their own (their messages, account, files) consents to the access it needs: don't ask again or warn about privacy. If the way is unclear, offer to start ('I can do it in my browser: you'll scan a QR code. Shall I start?'), never refuse. Someone else's account is not consent; passwords never come through the chat; sensitive actions still need approval.",
   "- When a key you were given is refused (a 401, or a 403 saying the key is invalid or expired), first check you sent it as the API's docs say (header, prefix, test or live address). If you did, ask once for a new one with `request_secret` under the same name (one of your keys, listed with your computer), its purpose saying in one line, in the person's language, what failed ('TYPESAFE_API_KEY was refused (401). Can you send a new one?'): the new one replaces the old. If the new one is refused too, don't ask again: say what failed and stop.",
   "- Lead with the answer. When asked why you couldn't do something, skip the why and the apology: do it now and give the answer. Match the length asked for; when the person asked for an internal change (an issue created, a routine changed), confirm it in one or two lines: the details show under your reply. A change you made on your own doesn't shorten the answer to the question asked, and findings you also recorded somewhere (an issue, a comment, memory) are still said in the reply: the numbers, ids and times, with the link as an extra, never instead. A thanks or an ok asks nothing, nor an 'I'll wait': at most a reaction, no text, without looking anything up.",
@@ -287,6 +295,8 @@ type ActionRow = {
   kind: string;
   name: string;
   run_id: string;
+  /** Its run answers in a confidential thread (ADR 0190). */
+  confidential: boolean;
 };
 
 /** Reads that would crowd "your recent work" (the actions themselves are what matters). */
@@ -541,6 +551,8 @@ export interface RunContext {
   sessionPrompt: string[];
   /** A personal workspace (ADR 0159): the blocks the executor adds speak of one person and their agents too. */
   personal: boolean;
+  /** The run's own thread is a confidential one (ADR 0190), as read when this was built. */
+  confidential: boolean;
 }
 
 /**
@@ -595,6 +607,11 @@ export async function buildRunContext(
     ai?: Omit<AiStatusDeps, "db">;
     /** Each workspace gets its own computer here; absent: people connect theirs. */
     workspaceComputer?: WorkspaceComputer;
+    /**
+     * The run thinks through the Model Gateway, so it reads the words of its own thread when that thread is
+     * confidential (ADR 0190). Any other run, and every run outside that thread, reads the stub.
+     */
+    unseal?: boolean;
   },
 ): Promise<RunContext> {
   // Independent lookups go out together (the database may be remote); org,
@@ -761,10 +778,21 @@ export async function buildRunContext(
     before.splice(before.length - historyStart([...before].reverse().map((m) => m.id)));
   }
   const rangeCut = range !== null && (before.length < fetched || fetched >= Math.max(1, options.maxMessages - 1));
-  const fullHistory: Message[] = background
+  const everything: Message[] = background
     ? [trigger]
     : [...before.reverse(), ...(root ? [rangeRoot(root, range !== null)] : []), ...thread.reverse()];
-  if (!fullHistory.some((m) => m.id === trigger.id)) fullHistory.push(trigger);
+  if (!everything.some((m) => m.id === trigger.id)) everything.push(trigger);
+  // A confidential message (ADR 0190) is read whole only in its own thread, by a run the lock holds. Anywhere else
+  // the stub stands in its place, with nothing of its meta: a card keeps what its agent typed there.
+  const ownThread = (m: Message) => m.id === run.threadRootId || m.threadId === run.threadRootId;
+  // By the thread's own row, never by a message's mark alone: a run of a confidential thread can write a marked
+  // message outside it (a report sent home), and a run asked under that message is neither locked nor a reader.
+  const sealedHere =
+    everything.some((m) => isConfidential(m.meta) && ownThread(m)) &&
+    (await threadIsConfidential(db, run.orgId, run.threadRootId));
+  const fullHistory = everything.map((m) =>
+    !isConfidential(m.meta) ? m : sealedHere && options.unseal && ownThread(m) ? unsealed(m) : stubOf(m),
+  );
   // The agents' DM (ADR 0053 §9): a run reads only the exchanges made for the same person.
   const agentsDm = !background && isAgentOnlyDm(channel) && !isRoutineRoomKey(channel.dmKey);
   const samePerson = agentsDm ? await forSamePerson(db, run, fullHistory, trigger.id) : null;
@@ -833,7 +861,8 @@ export async function buildRunContext(
     : sql`r.thread_root_id = ${run.threadRootId}::uuid`;
   const actionRows = rowsOf<ActionRow>(
     await db.execute(sql`with here_readers as materialized ${channelReadersSql(sql`${run.orgId}::uuid`, sql`${run.channelId}::uuid`)}
-      (select s.data, s.created_at, a.handle, false as elsewhere, c.kind, c.name, r.id as run_id
+      (select s.data, s.created_at, a.handle, false as elsewhere, c.kind, c.name, r.id as run_id,
+          ${confidentialThreadSql(sql`r.org_id`, sql`r.thread_root_id`)} as confidential
         from agent_run_steps s
         join agent_runs r on r.id = s.run_id
         join agents a on a.id = r.agent_id
@@ -850,7 +879,8 @@ export async function buildRunContext(
           and r.id <> ${run.id}::uuid and s.kind = 'tool_result'
         order by s.created_at desc limit 40)
       union all
-      (select s.data, s.created_at, null as handle, true as elsewhere, c.kind, c.name, r.id as run_id
+      (select s.data, s.created_at, null as handle, true as elsewhere, c.kind, c.name, r.id as run_id,
+          ${confidentialThreadSql(sql`r.org_id`, sql`r.thread_root_id`)} as confidential
         from agent_run_steps s
         join agent_runs r on r.id = s.run_id
         join channels c on c.id = r.channel_id
@@ -873,18 +903,21 @@ export async function buildRunContext(
             select 1 from here_readers h where not ${channelReaderSql(sql`r.channel_id`, sql`h.user_id`)}))
         order by s.created_at desc limit 30)`),
   );
-  // A result read from outside never shows here (ADR 0117): only that the tool read it.
-  const firstLine = (d: { content?: unknown; data?: { outside?: unknown } }) =>
-    d.data?.outside === true
-      ? "(read outside text, not shown)"
-      : neutralizeUntrusted(
-          cutText(
-            String(d.content ?? "")
-              .split("\n")[0]
-              ?.replace(/\s+/g, " ") ?? "",
-            140,
-          ),
-        );
+  // A result read from outside never shows here (ADR 0117): only that the tool read it. Nor does anything a run of
+  // a confidential thread did (ADR 0190): what it called next may repeat what it read.
+  const firstLine = (d: { content?: unknown; data?: { outside?: unknown } }, confidential: boolean) =>
+    confidential
+      ? CONFIDENTIAL_NOT_SHOWN
+      : d.data?.outside === true
+        ? "(read outside text, not shown)"
+        : neutralizeUntrusted(
+            cutText(
+              String(d.content ?? "")
+                .split("\n")[0]
+                ?.replace(/\s+/g, " ") ?? "",
+              140,
+            ),
+          );
   // Oldest first in each block (a union keeps no order of its own).
   const time = (r: ActionRow) => new Date(r.created_at).getTime();
   actionRows.sort((x, y) => time(x) - time(y));
@@ -894,7 +927,7 @@ export async function buildRunContext(
       .filter((r) => !r.elsewhere && (!samePerson || samePerson.runIds.has(r.run_id)))
       .map((a) => {
         const d = a.data as { name?: string; content?: string; isError?: boolean; data?: { outside?: unknown } };
-        const line = `- @${a.handle} ${d.name ?? "?"} → ${firstLine(d)} (${d.isError ? "error" : "ok"})`;
+        const line = `- @${a.handle} ${d.name ?? "?"} → ${firstLine(d, a.confidential)} (${d.isError ? "error" : "ok"})`;
         return { key: line, line };
       }),
     RECENT_ACTIONS_MAX,
@@ -914,8 +947,8 @@ export async function buildRunContext(
           a.kind === "dm" ? `DM with ${requester ? requesterName : (behindName ?? requesterName)}` : `#${a.name}`;
         // Keyed without the time: the same call repeated shows once, with its latest time.
         return {
-          key: `${where}|${d.name}|${firstLine(d)}`,
-          line: `- ${where}, ${ago(new Date(a.created_at))}: ${d.name ?? "?"} → ${firstLine(d)}`,
+          key: `${where}|${d.name}|${firstLine(d, a.confidential)}`,
+          line: `- ${where}, ${ago(new Date(a.created_at))}: ${d.name ?? "?"} → ${firstLine(d, a.confidential)}`,
         };
       }),
     WORK_ELSEWHERE_MAX,
@@ -984,7 +1017,7 @@ export async function buildRunContext(
     .join(", ");
 
   // A task's conversation (ADR 0145), or an older work thread in a DM (asked to implement it): the task, read from
-  // the issue now, never shown in the chat. In the conversation the assignee works on it; another agent was called in.
+  // the issue now, never shown in the chat. In the conversation an assignee works on it; another agent was called in.
   const issueWork = root ? issueWorkOf(root.meta) : null;
   const taskHere = root ? taskConversationOf(root.meta) : null;
   const workIssueId = issueWork && issueWork.agentId === agent.id ? issueWork.issueId : null;
@@ -1315,6 +1348,7 @@ export async function buildRunContext(
       JSON.stringify(options.skills ?? []),
     ],
     personal,
+    confidential: sealedHere,
   };
 }
 
@@ -2508,17 +2542,17 @@ export function toTurns(
   return turns.map((t) => ({ role: t.role, content: t.parts.map((p) => p.text).join("\n\n") }));
 }
 
-/** Whether the task is this agent's (its assignee works on it in the task's conversation, ADR 0145). */
+/** Whether the task is this agent's (an assignee works on it in the task's conversation, ADR 0145), alone or not. */
 async function assignedTo(db: Database, orgId: string, issueId: string, agentId: string) {
   const [row] = await db
-    .select({ id: schema.issues.id })
-    .from(schema.issues)
+    .select({ id: schema.issueAssignees.id })
+    .from(schema.issueAssignees)
     .where(
       and(
-        eq(schema.issues.id, issueId),
-        eq(schema.issues.orgId, orgId),
-        eq(schema.issues.assigneeType, "agent"),
-        eq(schema.issues.assigneeId, agentId),
+        eq(schema.issueAssignees.issueId, issueId),
+        eq(schema.issueAssignees.orgId, orgId),
+        eq(schema.issueAssignees.assigneeType, "agent"),
+        eq(schema.issueAssignees.assigneeId, agentId),
       ),
     );
   return Boolean(row);

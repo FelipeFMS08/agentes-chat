@@ -1,3 +1,4 @@
+import { hashKey } from "@tanstack/react-query";
 import type { ScreenKind } from "./types";
 
 /** React Query keys. Everything under ["org", orgId] is dropped when switching organizations. */
@@ -83,6 +84,8 @@ export const keys = {
   /** Every single agent's reads (its page, its brain). */
   agentPages: (orgId: string) => ["org", orgId, "agent"] as const,
   aiAccounts: (orgId: string) => ["org", orgId, "ai-accounts"] as const,
+  /** Under `aiAccounts`: the same `machine.updated` event refetches it. */
+  accountOrder: (orgId: string) => ["org", orgId, "ai-accounts", "order"] as const,
   accountLogin: (orgId: string, machineId: string, loginId: string) =>
     ["org", orgId, "machine", machineId, "account-login", loginId] as const,
   agentChannels: (orgId: string, agentId: string) => ["org", orgId, "agent", agentId, "channels"] as const,
@@ -292,3 +295,6 @@ export const keys = {
   widgetSuggestions: (orgId: string, agentId: string) => ["org", orgId, "dashboards", "suggestions", agentId] as const,
   widgetPinnable: (orgId: string) => ["org", orgId, "dashboards", "pinnable"] as const,
 };
+
+/** `keys.me` as the query cache names it, for telling its events apart. */
+export const ME_HASH = hashKey(keys.me);

@@ -1,8 +1,9 @@
 import { modelInfo } from "@agenteschat/providers";
+import { isConfidentialRun } from "./confidential";
 import { cutText } from "./format";
 import type { ModelGateway } from "./gateway";
 import { callJev, type JevKeySource } from "./jev-key";
-import { jevCostNanoUsd } from "./router-jev";
+import { jevCostOf } from "./router-jev";
 
 /**
  * Small semantic judgments about what people write ("is this asking the agent
@@ -104,6 +105,15 @@ export function withJudgeCall(error: unknown, model: string, provider: string) {
 export const judgeCallOf = (error: unknown): Partial<JudgeCallTags> =>
   (error as { judgeCall?: JudgeCallTags } | null)?.judgeCall ?? {};
 
+/**
+ * No judge answers for a run of a confidential thread (ADR 0190): what such a run read goes to its own model and to
+ * no other, and a judgment's `state` is made of the run's words. It fails like a judge that is off, before anything
+ * leaves: every caller already does without an answer.
+ */
+function refuseConfidential(request: Pick<JudgeRequest, "runId" | "kind">) {
+  if (isConfidentialRun(request.runId)) throw new Error(`judge: ${request.kind} is not asked in a confidential thread`);
+}
+
 const clamp = (n: unknown) => (typeof n === "number" && Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0);
 
 /** Whether a request needs a model that sees images (an image in it, or a `box` question). */
@@ -117,7 +127,10 @@ function boxOf(v: unknown): JudgeBox {
   return { top, left, bottom: Math.max(top, clamp(b.bottom)), right: Math.max(left, clamp(b.right)) };
 }
 
-/** TypeSafe Jev (`POST /v1/systemone`): one request, all questions answered in parallel. */
+/**
+ * TypeSafe Jev (`POST /v1/systemone`, or OpenRouter's Decisions route with an OpenRouter key): one request, all
+ * questions answered in parallel.
+ */
 export function createJevJudge(options: {
   /** Read on every call (`jev-key.ts`): without one it throws `JevOffError`. */
   key: JevKeySource;
@@ -134,6 +147,7 @@ export function createJevJudge(options: {
   return {
     name: "jev",
     async ask(request) {
+      refuseConfidential(request);
       const vision = judgeSeesImages(request);
       const model = vision ? (options.visionModel ?? "jev-preview") : (options.model ?? "jev-latest");
       const assets = Object.fromEntries(
@@ -145,7 +159,7 @@ export function createJevJudge(options: {
       const body = await callJev<{
         model?: string;
         answers?: Record<string, JudgeAnswer>;
-        usage?: { input_tokens?: number; output_tokens?: number };
+        usage?: { input_tokens?: number; output_tokens?: number; cost?: number };
       }>(options.key, {
         fetch: options.fetch,
         baseURL: options.baseURL,
@@ -174,7 +188,7 @@ export function createJevJudge(options: {
           model: body.model ?? model,
           inputTokens,
           outputTokens: body.usage?.output_tokens ?? 0,
-          costNanoUsd: jevCostNanoUsd(inputTokens),
+          costNanoUsd: jevCostOf(body.usage),
         })
         .catch(() => {});
       const out: Record<string, JudgeAnswer> = {};
@@ -218,6 +232,7 @@ export function createLlmJudge(deps: {
   return {
     name: "llm",
     async ask(request) {
+      refuseConfidential(request);
       if (request.calibrated) throw new Error("judge: a calibrated judge is required (no Jev)");
       if (judgeSeesImages(request)) throw new Error("judge: images and boxes need Jev");
       const model = await deps.resolveModel(request.orgId);
@@ -560,6 +575,7 @@ export function createFakeJudge(
     name: "fake",
     calls,
     async ask(request) {
+      refuseConfidential(request);
       calls.push(request);
       const out: Record<string, JudgeAnswer> = {};
       for (const [id, q] of Object.entries(request.questions)) {

@@ -20,8 +20,7 @@
     "down": "Nach unten",
     "position": "{{at}} von {{count}}.",
     "channelPosition": "{{at}} von {{count}}.",
-    "itsChannels": "Kanäle",
-    "seeAll": "Alle ansehen"
+    "itsChannels": "Kanäle"
   },
   "blocks": {
     "send": "Senden",
@@ -188,16 +187,9 @@
       "text": "Er ist vielleicht offline oder außerhalb deines Netzwerks. Deine Chats erscheinen von selbst, sobald er wieder da ist.",
       "kept": "Du siehst, was schon in der App war."
     },
-    "section": {
-      "agents": "Agenten",
-      "channels": "Kanäle",
-      "people": "Personen"
-    },
-    "seeAll": {
-      "agents": "Alle Agenten ansehen",
-      "channels": "Alle Kanäle ansehen",
-      "people": "Alle Personen ansehen"
-    },
+    "pinned": "Angepinnt",
+    "recent": "Zuletzt",
+    "seeAll": "Alle Chats ansehen",
     "wait": {
       "verb": {
         "approval": "braucht dein Okay",
@@ -359,8 +351,15 @@
     "profile": "Profil",
     "here_one": "{{count}} hier",
     "here_other": "{{count}} hier",
+    "membersAdd": "Hinzufügen",
+    "membersAdded_one": "{{count}} zu #{{channel}} hinzugefügt",
+    "membersAdded_other": "{{count}} zu #{{channel}} hinzugefügt",
+    "memberRemoved": "{{name}} ist nicht mehr in #{{channel}}",
+    "muted": "#{{channel}} stummgeschaltet",
+    "unmuted": "Stummschaltung für #{{channel}} aufgehoben",
     "headerAgent": "{{who}}. Profil öffnen",
     "headerChannel": "{{who}}. Optionen",
+    "headerMembers": "{{who}}. Sehen, wer hier ist",
     "switchHint": "Gedrückt halten, um die Unterhaltung zu wechseln",
     "switchTitle": "Unterhaltung wechseln",
     "switchSearch": "Unterhaltungen durchsuchen",
@@ -443,21 +442,15 @@
     "doubleTapHint": "Doppeltippen = 👍",
     "react": "Reagieren",
     "attach": {
-      "more": "Noch ein Foto oder eine Datei",
       "remove": "{{name}} entfernen",
       "waiting": "{{name}}, wartet auf das Senden",
       "sending": "{{name}}, wird gesendet",
+      "failed": "{{name}}, nicht gesendet: zum erneuten Versuch senden",
+      "preparing": "Dateien werden vorbereitet…",
       "tooMany": "Bis zu {{count}} Dateien pro Nachricht."
     },
     "swipeReply": "Zum Antworten nach rechts wischen",
     "intent": {
-      "suggest": {
-        "merge": "Mach den Merge",
-        "review": "Bitte {{name}}, es vorher zu prüfen",
-        "seeChange": "Zeig mir, was sich geändert hat",
-        "summarize": "Fass es in 3 Punkten zusammen",
-        "nextStep": "Was ist der nächste Schritt?"
-      },
       "arrived": "{{name}} ist jetzt im Team",
       "meet": "Deine erste Unterhaltung mit {{name}}",
       "roleIntro": "{{role}} in deinem Team. Frag einfach in deinen Worten.",
@@ -603,7 +596,6 @@
     "minuteLess": "{{n}} Minuten früher",
     "minuteMore": "{{n}} Minuten später",
     "submit": "Zu dieser Zeit erinnern",
-    "quick": "Schnelle Zeiten ansehen",
     "done": "Erinnerung eingestellt",
     "error": {
       "noAgent": "Kein Agent hier kann dich erinnern",
@@ -661,6 +653,7 @@
     "title": "Neue Mission",
     "intro": "Der Agent macht einen Plan und startet erst, wenn du es sagst.",
     "placeholder": "Was soll erledigt werden?",
+    "who": "Wer sie übernimmt",
     "submit": "Plan anfordern",
     "created": "{{name}} macht den Plan",
     "noAgents": "Noch kann kein Agent Missionen ausführen. Verbinde auf der Website einen Computer.",
@@ -818,9 +811,6 @@
     "keepEditing": "Weiter bearbeiten"
   },
   "newAgent": {
-    "leaveTitle": "Ohne Erstellen verlassen?",
-    "leaveText": "Der angefangene Agent wird nicht erstellt.",
-    "keepGoing": "Weiter erstellen",
     "identityQuestion": "Wer ist der Agent?",
     "identityLead": "Sein Name, wie du ihn im Chat rufst, und sein Gesicht.",
     "handleMention": "Erwähne @{{handle}}, um ihn zu rufen.",
@@ -846,7 +836,6 @@
       "archive": "Das Handy öffnet keine .zip- oder .tar.gz-Dateien. Tippe in der Dateien-App auf die .zip, um sie zu entpacken, und wähle die Dateien darin, oder importiere am Computer.",
       "privacy": "Wird auf diesem Handy gelesen. Schlüssel- und Login-Dateien werden nie geöffnet.",
       "also": "Kommt auch mit",
-      "change": "Ändern",
       "arrived_one": "{{name}} ist da",
       "arrived_other": "{{count}} Agenten sind da",
       "partial": "{{done}} von {{total}} sind da. Ein erneuter Import holt den Rest."
@@ -870,7 +859,11 @@
     "taskForM": "Aufgabe für {{name}}",
     "taskPlaceholder": "Was soll erledigt werden?",
     "sendTask": "Aufgabe senden",
-    "taskSent": "Aufgabe gesendet"
+    "taskSent": "Aufgabe gesendet",
+    "brakes": {
+      "forgetTitle": "Diese Antworten vergessen?",
+      "forgetText": "{{name}} fragt vor dieser Art von Arbeit wieder nach."
+    }
   },
   "activity": {
     "title": "Aktivität",
@@ -882,6 +875,8 @@
     },
     "doneToast": "Erledigt",
     "undo": "Rückgängig",
+    "doneAllToast_one": "{{count}} nach Erledigt verschoben",
+    "doneAllToast_other": "{{count}} nach Erledigt verschoben",
     "day": {
       "today": "Heute",
       "yesterday": "Gestern",
@@ -1193,6 +1188,7 @@
     "blocked": "Du bist der einzige Inhaber von {{names}}. Mach auf der Website unter Personen jemand anderen zum Inhaber und komm dann zurück.",
     "addPasswordFirst": "Füge deinem Konto zuerst auf der Website ein Passwort hinzu und gib es dann hier ein.",
     "addPasswordWeb": "Passwort auf der Website hinzufügen",
+    "onThisComputer": "Lösche es in der agentes.chat-App auf dem Computer, auf dem dieser Server läuft.",
     "otherAccount": "Du hast dich mit einem anderen Konto angemeldet. Es wurde nichts gelöscht.",
     "hold": "Zum Löschen gedrückt halten"
   },
@@ -1212,7 +1208,7 @@
       "file": "Datei"
     },
     "more": "Weitere Optionen",
-    "send": "Senden",
+    "sendCopy": "Kopie senden",
     "savePhotos": "In Fotos sichern",
     "drive": "Im Drive ansehen",
     "saved": "In Fotos gesichert",
@@ -1226,6 +1222,7 @@
     "place": "{{index}} von {{count}}",
     "previous": "Vorheriges Bild",
     "next": "Nächstes Bild",
+    "noPreviewTitle": "Keine Vorschau",
     "noPreview": "Diese Datei öffnet sich nicht in der App. Sende sie an eine andere App, um sie zu öffnen.",
     "video": {
       "play": "Abspielen",
@@ -1235,7 +1232,8 @@
       "mute": "Ton aus",
       "unmute": "Ton an",
       "fullscreen": "Vollbild",
-      "open": "Öffnen"
+      "open": "Öffnen",
+      "cantPlay": "Dieses Video kann auf diesem Handy nicht abgespielt werden."
     }
   },
   "issues": {
@@ -1328,7 +1326,6 @@
   "drive": {
     "title": "Drive",
     "search": "Im Drive suchen",
-    "types": "Dateitypen",
     "type": {
       "all": "Alle",
       "documents": "Dokumente",
@@ -1349,7 +1346,6 @@
     },
     "by": "{{name}} · {{when}}",
     "noResults": "Nichts mit diesen Filtern.",
-    "loadFailed": "Der Drive ließ sich nicht laden.",
     "more": "Mehr zeigen"
   },
   "constellation": {
@@ -1414,8 +1410,6 @@
     "openExisting": "Seite öffnen"
   },
   "routines": {
-    "loadFailed": "Die Routinen ließen sich nicht laden.",
-    "anyAgent": "Alle Agenten",
     "create": "Erstellen",
     "when": {
       "custom": "Auf deine Art",
@@ -1801,6 +1795,7 @@
       "ui_automation_off": "Die UI-Automatisierung ist aus",
       "xcode_missing": "Der Mac braucht Xcode",
       "xcode_too_old": "Xcode ist zu alt für dieses iPhone",
+      "ios_behind_xcode": "iOS dieses iPhones aktualisieren",
       "device_support": "Der Mac bereitet dieses iPhone vor",
       "helper_missing": "Die Test-App ist noch nicht eingerichtet",
       "helper_expired": "Die Test-App muss erneuert werden",
@@ -2012,6 +2007,7 @@
       "waitingFor": "{{names}} wartet für {{person}} auf {{device}}",
       "tool_request": "{{names}} bittet dich, {{tool}} auf deinem {{device}} einzuschalten",
       "cli_request": "{{names}} bittet dich, {{tool}} auf deinem {{device}} zu installieren",
+      "folder_request": "{{names}} bittet dich um den Ordner {{path}} auf deinem {{device}}",
       "allowOnce": "Einmal erlauben",
       "always": "{{name}} immer erlauben",
       "no": "Nein",
@@ -2024,7 +2020,9 @@
       "other": "Anderes Gerät nutzen",
       "stop": "Nicht mehr warten",
       "useInstead": "Stattdessen {{name}} nutzen",
-      "none": "Kein anderes Gerät, das du nutzen kannst, ist bereit."
+      "none": "Kein anderes Gerät, das du nutzen kannst, ist bereit.",
+      "tried": "{{device}} wird erneut versucht.",
+      "stopped": "Es wird nicht mehr auf {{device}} gewartet."
     }
   },
   "connectors": {
@@ -2141,25 +2139,16 @@
     }
   },
   "joinRequests": {
-    "share": "Link teilen",
-    "roles": "Rollen",
-    "rolesHint": "Sie treten mit den eingeschalteten Rollen bei. Ohne Rolle dürfen sie, was Alle dürfen."
+    "share": "Link teilen"
   },
   "humanCheck": {
     "title": "Kurze Prüfung",
     "blocked": "Die Prüfung wurde nicht geladen. Versuch ein anderes Netzwerk."
   },
   "invitePeople": {
-    "emailsHelp": "Füge eine Liste ein oder tippe. Jede Person bekommt eine E-Mail und tritt sofort bei.",
-    "here": "Schon dabei",
-    "invited": "Schon eingeladen",
-    "fix": "Prüf das",
-    "channels": "Kanäle",
     "optional": "Optional",
     "ok": "Fertig",
     "noteHelp": "Erscheint in der E-Mail mit deinem Namen. Bis zu {{max}} Zeichen.",
-    "roleHelp": "Ändert, was die Person beim Beitritt bekommt.",
-    "remove": "Von der Liste nehmen",
     "sendAgain": "Erneut senden",
     "cancelTitle": "Einladung an {{email}} zurückziehen?",
     "cancelText": "Der Link öffnet sich dann nicht mehr.",
@@ -2297,7 +2286,6 @@
     "noMatch": "Keine Rolle passt zu „{{q}}“.",
     "tooMany": "Dieser Workspace hat schon 100 Rollen. Lösche eine, um eine neue zu erstellen.",
     "loadFailed": "Die Rollen konnten nicht geladen werden. {{cause}}",
-    "backToList": "Zurück zu den Rollen",
     "nobody": "Niemand",
     "reach": {
       "permissions_one": "{{count}} Berechtigung",
@@ -2674,7 +2662,6 @@
   },
   "dashboards": {
     "homeRow": "Nur du · deine eigenen Widgets",
-    "loadFailed": "Die Dashboards konnten nicht geladen werden.",
     "create": "Erstellen",
     "routineTarget": "sein Widget",
     "pin": {

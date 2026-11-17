@@ -24,6 +24,12 @@ const KNOWN = {
   "password_link.email": "errors.passwordLink.email",
   "password_link.server_owner": "errors.passwordLink.serverOwner",
   "password_link.other_workspace": "errors.passwordLink.otherWorkspace",
+  "wallpaper.photo_not_yours": "errors.wallpaper.notYours",
+  "wallpaper.invalid": "errors.wallpaper.invalid",
+  "wallpaper.too_large": "errors.wallpaper.tooLarge",
+  "wallpaper.type": "errors.wallpaper.type",
+  "wallpaper.empty": "errors.wallpaper.type",
+  "wallpaper.not_base64": "errors.wallpaper.type",
   "webhook.github_no_access": "errors.webhook.githubNoAccess",
   "webhook.github_failed": "errors.webhook.githubFailed",
   "webhook.invalid_secret": "errors.webhook.invalidSecret",
@@ -38,10 +44,10 @@ const KNOWN = {
   "agent.not_owner": "errors.agent.ownerOrAdmin",
   "usage_queue.cancel_forbidden": "errors.agent.ownerOrAdmin",
   "agent.details_hidden": "errors.agent.detailsHidden",
-  "brain.extra_owner_only": "errors.agent.extraOwnerOnly",
   "action.not_allowed": "errors.agent.undoForbidden",
   "action.skills_admins": "errors.agent.undoSkillsAdmins",
   "account.not_owner": "errors.account.notOwner",
+  "account.order_forbidden": "errors.account.orderForbidden",
   "channel.members_forbidden": "errors.channel.membersForbidden",
   "agent_proposal.not_requester": "errors.agentProposal.notRequester",
   "proposal.not_requester": "errors.agentProposal.notRequester",
@@ -99,6 +105,7 @@ const KNOWN = {
   "machine.exec_disabled": "errors.mission.execDisabled",
   budget_exceeded: "agentPage.activity.errors.budget_exceeded",
   "agent_group.not_found": "errors.agentGroup.notFound",
+  "agent_group.ambiguous": "errors.agentGroup.ambiguous",
   "agent_group.too_many": "errors.agentGroup.tooMany",
   "thread.context_not_visible": "errors.thread.contextNotVisible",
   "thread.archived": "errors.thread.archived",
@@ -178,6 +185,7 @@ const KNOWN = {
   "role.name_required": "errors.role.nameRequired",
   "role.name_long": "errors.role.nameLong",
   "role.too_many": "errors.role.tooMany",
+  "member.outside_owner": "errors.role.outsideOwner",
   "role.grant_forbidden": "errors.role.grantForbidden",
   "role.above_you": "errors.role.aboveYou",
   "role.base": "errors.role.base",
@@ -196,6 +204,14 @@ const KNOWN = {
   "connector.unfinished": "errors.connector.unfinished",
   "connector.unavailable": "errors.connector.unavailable",
   "connector.misconfigured": "errors.connector.misconfigured",
+  "connector.header_name": "errors.connector.headerName",
+  "connector.header_value": "errors.connector.headerValue",
+  "connector.header_reserved": "errors.connector.headerReserved",
+  "connector.header_twice": "errors.connector.headerTwice",
+  "connector.header_and_key": "errors.connector.headerAndKey",
+  "connector.headers_too_many": "errors.connector.headersTooMany",
+  "connector.headers_with_sign_in": "errors.connector.headersWithSignIn",
+  "connector.headers_unreadable": "errors.connector.headersUnreadable",
   // Facts only (the phone shows this one): the web's onboarding says `standing.createUnpaid` beside the way to pay.
   "org.create_unpaid": "standing.createInactive",
   "credentials.plan_hold": "connectAi.key.closed",
@@ -288,6 +304,7 @@ const KNOWN = {
   "skill.too_large": "errors.skill.tooLarge",
   "skill.too_many_files": "errors.skill.tooManyFiles",
   "skill.repo_too_large": "errors.skill.repoTooLarge",
+  "skill.link_too_large": "errors.skill.linkTooLarge",
   "skill.no_frontmatter": "errors.skill.noFrontmatter",
   "skill.body_too_long": "errors.skill.bodyTooLong",
   "skill.no_skill_md_zip": "errors.skill.noSkillMdZip",
@@ -835,6 +852,9 @@ const FIELD_ISSUES = {
 
 /** The app has its own line for this server code. */
 export const hasWordsFor = (code: string) => Object.hasOwn(KNOWN, code);
+
+/** The server knows no session for this request (401): only signing in again helps. */
+export const sessionEnded = (error: unknown) => error instanceof ApiError && error.status === 401;
 
 /** What the request named isn't there anymore (deleted, archived, or never this person's to see): trying again won't help. */
 export const isGone = (error: unknown) => error instanceof ApiError && (error.status === 404 || error.status === 410);

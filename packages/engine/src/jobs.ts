@@ -113,7 +113,7 @@ import {
   routeMessage,
   smallModelFor,
 } from "./router";
-import { createJevRouterStrategy, jevCostNanoUsd, routeChain } from "./router-jev";
+import { createJevRouterStrategy, routeChain } from "./router-jev";
 import { createPlanRouterStrategy } from "./router-plan";
 import { executeRoutineRun } from "./routines";
 import { type AgentRun, NO_AI } from "./runs";
@@ -271,7 +271,7 @@ export function messageRouter(deps: JobDeps): RouterDeps | null {
                 model: u.model,
                 inputTokens: u.inputTokens,
                 outputTokens: u.outputTokens,
-                costNanoUsd: jevCostNanoUsd(u.inputTokens),
+                costNanoUsd: u.costNanoUsd,
               });
             },
           }),
@@ -289,8 +289,7 @@ export function messageRouter(deps: JobDeps): RouterDeps | null {
       maxHops: deps.maxHops,
     },
     hasAi: (orgId) => orgHasAi({ db: deps.db, gateway: deps.gateway, machines: deps.machines }, orgId),
-    outOfOffice: (orgId, ids) =>
-      outOfOfficeIds(deps.db, orgId, ids, { hasModel: (agent) => deps.gateway.hasModelCredential(agent) }),
+    outOfOffice: (orgId, ids) => outOfOfficeIds(deps.db, orgId, ids),
     routing: { jev: () => jevPicks(jev?.key), smallModel, plans },
     quietMs: router.quietMs,
     quietByTyping: router.quietByTyping,

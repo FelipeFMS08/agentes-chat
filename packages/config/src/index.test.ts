@@ -154,6 +154,29 @@ describe("loadConfig", () => {
     );
   });
 
+  test("the operator API's reveal token: optional, long, secret, only with the full token and equal to neither of the others", () => {
+    const full = "o".repeat(32);
+    const read = "r".repeat(32);
+    const reveal = "v".repeat(32);
+    const base = { ...valid, OPERATOR_API_TOKEN: full, OPERATOR_API_READ_TOKEN: read };
+    expect(loadConfig(base).OPERATOR_API_REVEAL_TOKEN).toBeUndefined();
+    const all = loadConfig({ ...base, OPERATOR_API_REVEAL_TOKEN: reveal });
+    expect(all.OPERATOR_API_REVEAL_TOKEN).toBe(reveal);
+    expect(redactConfig(all).OPERATOR_API_REVEAL_TOKEN).toBe("********");
+    expect(() => loadConfig({ ...base, OPERATOR_API_REVEAL_TOKEN: full })).toThrow(
+      /OPERATOR_API_REVEAL_TOKEN must differ from OPERATOR_API_TOKEN/,
+    );
+    expect(() => loadConfig({ ...base, OPERATOR_API_REVEAL_TOKEN: read })).toThrow(
+      /OPERATOR_API_REVEAL_TOKEN must differ from OPERATOR_API_READ_TOKEN/,
+    );
+    expect(() => loadConfig({ ...valid, OPERATOR_API_REVEAL_TOKEN: reveal })).toThrow(
+      /OPERATOR_API_REVEAL_TOKEN needs OPERATOR_API_TOKEN/,
+    );
+    expect(() => loadConfig({ ...base, OPERATOR_API_REVEAL_TOKEN: "short" })).toThrow(
+      /OPERATOR_API_REVEAL_TOKEN: must be at least 32 characters/,
+    );
+  });
+
   test("MCP_CALLER_IDENTITY: host=secret pairs, a bare lower-case host and a long secret, each host once, never shown", () => {
     const secret = "s".repeat(32);
     const padded = `${"p".repeat(30)}==`;
@@ -216,6 +239,18 @@ describe("loadConfig", () => {
     expect(redactConfig(loadConfig(billing)).BILLING_LINK_SECRET).toBe("********");
   });
 
+  test("referrals: an https address, only with the link's secret", () => {
+    expect(loadConfig(valid).REFERRALS_URL).toBeUndefined();
+    const billing = { ...valid, BILLING_URL: "https://billing.example.com", BILLING_LINK_SECRET: "b".repeat(32) };
+    expect(loadConfig({ ...billing, REFERRALS_URL: "https://refer.example.com" }).REFERRALS_URL).toBe(
+      "https://refer.example.com",
+    );
+    expect(() => loadConfig({ ...valid, REFERRALS_URL: "https://refer.example.com" })).toThrow(
+      /REFERRALS_URL needs BILLING_LINK_SECRET/,
+    );
+    expect(() => loadConfig({ ...billing, REFERRALS_URL: "http://refer.example.com" })).toThrow(/REFERRALS_URL/);
+  });
+
   test("session screening is off by default and needs the operator API, its only reader", () => {
     expect(loadConfig(valid).SESSION_SCREENING).toBe(false);
     expect(() => loadConfig({ ...valid, SESSION_SCREENING: "true" })).toThrow(
@@ -272,6 +307,19 @@ describe("loadConfig", () => {
       "173.245.48.1",
       "2400:cb00::/32",
     ]);
+  });
+
+  test("EXTRA_TRUSTED_ORIGINS: off unless set; a list of origins, trimmed, a trailing slash dropped, never a path", () => {
+    expect(loadConfig(valid).EXTRA_TRUSTED_ORIGINS).toBeUndefined();
+    expect(
+      loadConfig({
+        ...valid,
+        EXTRA_TRUSTED_ORIGINS: " http://192.168.0.10:3000 , https://x.ts.net/, ,",
+      }).EXTRA_TRUSTED_ORIGINS,
+    ).toEqual(["http://192.168.0.10:3000", "https://x.ts.net"]);
+    for (const entry of ["x.ts.net", "https://x.ts.net/chat", "https://x.ts.net?q=1", "ftp://x.ts.net"]) {
+      expect(() => loadConfig({ ...valid, EXTRA_TRUSTED_ORIGINS: entry })).toThrow(/EXTRA_TRUSTED_ORIGINS/);
+    }
   });
 
   test("OPS_REPORT_EMAIL: off unless set, one address or a list, each an address", () => {

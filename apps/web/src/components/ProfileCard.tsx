@@ -29,7 +29,7 @@ import { errorText } from "@agenteschat/client/lib/errors";
 import { clockHour, formatMonthYear, formatPercent, relativeTime, shortModel } from "@agenteschat/client/lib/format";
 import { agentGrammar } from "@agenteschat/client/lib/grammar";
 import { can } from "@agenteschat/client/lib/permissions";
-import { agentFaceWord, isOutOfOffice, statusEndNote } from "@agenteschat/client/lib/presence";
+import { agentFaceWord, agentWhyKey, isOutOfOffice, statusEndNote } from "@agenteschat/client/lib/presence";
 import { apiModelName, autoMakerOf } from "@agenteschat/client/lib/providers";
 import { isRightHand, tellsNameStory } from "@agenteschat/client/lib/right-hand";
 import { rolesOf } from "@agenteschat/client/lib/roles";
@@ -321,6 +321,7 @@ function PersonCard({ userId, onDone }: { userId: string; onDone: () => void }) 
   const handle = person?.handle ?? member?.handle;
   const joinedAt = person?.joinedAt ?? member?.joinedAt;
   const owner = (person?.role ?? member?.role) === "owner";
+  const outsideOf = person?.outsideOf ?? member?.outsideOf;
   // The roles they hold, top first (ADR 0085); who manages members gives and takes the ones below their own.
   const roleIds = person?.roleIds ?? member?.roleIds ?? [];
   const held = rolesOf({ roleIds }, roles);
@@ -420,6 +421,12 @@ function PersonCard({ userId, onDone }: { userId: string; onDone: () => void }) 
         </section>
       )}
       <dl className="profile-card__facts">
+        {outsideOf && (
+          <>
+            <dt>{t("members.outside.title")}</dt>
+            <dd>{outsideOf}</dd>
+          </>
+        )}
         {person && shown && (
           <>
             <dt>{t("profile.presence")}</dt>
@@ -820,8 +827,8 @@ function AudienceEdit({ agent }: { agent: Agent }) {
  * 00:32").
  */
 function agentWhy(t: TFunction, shown: AgentShown, names: WorkPlaceNames, locale: string): string | null {
-  if (shown.noAi) return t("presence.agentWhy.noAi");
-  if (shown.presence === "out" || shown.presence === "offline") return t(`presence.agentWhy.${shown.presence}`);
+  const key = agentWhyKey(shown.presence, shown.noAi);
+  if (key) return t(`presence.agentWhy.${key}`);
   if (shown.presence === "online" && shown.work?.state !== "later") return null;
   return workDetail(t, shown.work, names, locale);
 }

@@ -49,6 +49,16 @@ const HOST_NAME = "[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]*[a-
 const HOST_SECRET = `${HOST_NAME}=[^\\s,]{32,}`;
 const HOST_SECRETS = new RegExp(`^${HOST_SECRET}(?:,${HOST_SECRET})*$`);
 
+/** Whether `value` is a web origin alone (http or https, host and port), the form a browser sends in `Origin`. */
+function isOrigin(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (url.protocol === "http:" || url.protocol === "https:") && url.origin === value;
+  } catch {
+    return false;
+  }
+}
+
 /** Claude model ids accepted as defaults. Prices live in `@agenteschat/providers` (`MODEL_CATALOG`). */
 const modelId = z.string().regex(/^[a-z0-9][a-z0-9.-]*$/, "must be a model id such as claude-sonnet-5-5");
 
@@ -75,6 +85,30 @@ export const envVars = {
       "Public base URL of this instance, without a trailing slash. Used for sign-in callbacks, invitation links and the allowed browser origin.",
     section: "Server",
     example: "https://chat.example.com",
+  },
+  EXTRA_TRUSTED_ORIGINS: {
+    schema: z
+      .string()
+      .optional()
+      .transform((value) =>
+        value
+          ?.split(",")
+          .map((entry) => entry.trim().replace(/\/+$/, ""))
+          .filter(Boolean),
+      )
+      .pipe(
+        z
+          .array(
+            z
+              .string()
+              .refine(isOrigin, "must be an http or https origin such as https://chat.example.com, with no path"),
+          )
+          .optional(),
+      ),
+    description:
+      "Other origins this instance is opened at, comma-separated (`http://192.168.0.10:3000`, `https://agentes.tail1234.ts.net`). `PUBLIC_URL` is always trusted; these are too, for sign-in and for saving from those addresses (the sign-in origin check, the app's writes and its WebSockets). Each is http or https, host and port, with no path; a trailing slash is dropped. Unset (default): `PUBLIC_URL` only.",
+    section: "Server",
+    example: "http://192.168.0.10:3000,https://agentes.tail1234.ts.net",
   },
   LANDING_URL: {
     schema: z.url().optional(),
@@ -340,7 +374,7 @@ export const envVars = {
   TYPESAFE_API_KEY: {
     schema: z.string().optional(),
     description:
-      "Your TypeSafe key for Jev (https://console.typesafe.ai/keys), optional. Jev picks who answers messages nobody @mentioned, keeps memory tidy and finds what agents look for on their screens. The installation's owner can also add it in Settings › AI accounts. This variable wins over that one. Never sent to a browser. Calls are billed to your TypeSafe account.",
+      "Your TypeSafe key for Jev (https://console.typesafe.ai/keys), optional. Jev picks who answers messages nobody @mentioned, keeps memory tidy and finds what agents look for on their screens. An OpenRouter key (sk-or-…) works too: the same Jev, called and billed through OpenRouter. The installation's owner can also add one in Settings › AI accounts. This variable wins over that one. Never sent to a browser. Calls are billed to the key's account.",
     section: "Agents",
     secret: true,
   },
@@ -715,7 +749,7 @@ export const envVars = {
   MCP_STDIO_ENABLED: {
     schema: z.stringbool().default(false),
     description:
-      "Allow workspace administrators to connect local stdio MCP programs in Settings > Connectors. Programs run as the server's OS user (inside its container in Docker), with that user's file and network access. Enable only when every workspace administrator is trusted to run programs on this server. Disabled by default; unavailable on agentes.chat Cloud or with ALLOW_SIGNUP=true. Commands, arguments and explicit environment are stored encrypted; server secrets are not inherited. A connected computer is not the execution host (ADR 0186).",
+      "Allow workspace administrators to connect local stdio MCP programs in Settings > Connectors. Programs run as the server's OS user (inside its container in Docker), with that user's file and network access. Enable only when every workspace administrator is trusted to run programs on this server. Disabled by default; unavailable on agentes.chat Cloud or with ALLOW_SIGNUP=true. Commands, arguments and explicit environment are stored encrypted; server secrets are not inherited. A connected computer is not the execution host (ADR 0194).",
     section: "Connectors",
   },
   MCP_CALLER_IDENTITY: {
@@ -1060,6 +1094,17 @@ export const envVars = {
     example: "<output of openssl rand -base64 48>",
     secret: true,
   },
+  OPERATOR_API_REVEAL_TOKEN: {
+    schema: z
+      .string()
+      .min(32, "must be at least 32 characters. Generate one with `openssl rand -base64 48`")
+      .optional(),
+    description:
+      "A third token for the operator API, for the one thing the other two never do: read a single piece of what a workspace wrote (a message, a step of a run, an agent's instructions), one at a time, with a stated reason, for a member who asked for help or to diagnose a run that failed or got stuck (`POST /reveal/...`, ADR 0056). Every such read is recorded first and shows in that workspace's audit log. Leave it unset unless a tool of yours needs it: setting it makes you a reader of your workspaces' content, which you must tell them, and makes the server keep what members write in the feedback form for 90 days. Needs `OPERATOR_API_TOKEN` and must differ from it and from `OPERATOR_API_READ_TOKEN`. Unset (default): every path under `/reveal` answers 403 and none of those words are kept. Generate with `openssl rand -base64 48`.",
+    section: "Operator",
+    example: "<output of openssl rand -base64 48>",
+    secret: true,
+  },
   OPERATOR_API_PORT: {
     schema: z.coerce.number().int().min(1).max(65535).default(3001),
     description:
@@ -1131,6 +1176,13 @@ export const envVars = {
     example: "<output of openssl rand -base64 48>",
     secret: true,
   },
+  REFERRALS_URL: {
+    schema: z.url({ protocol: /^https$/ }).optional(),
+    description:
+      "Your referral service's address (ADR 0192). Signed-in people get Refer and earn in their menu, and `/refer`, which open it signed in as them. It shares `BILLING_LINK_SECRET` with this server, which signs the link, so it needs that set. Unset (default): no referrals anywhere.",
+    section: "Operator",
+    example: "https://refer.example.com",
+  },
   BILLING_HOLD_NEW_WORKSPACES: {
     schema: z.stringbool().default(false),
     description:
@@ -1172,6 +1224,12 @@ export const envVars = {
   LOG_LEVEL: {
     schema: z.enum(["debug", "info", "warn", "error"]).default("info"),
     description: "Minimum log level written to stdout.",
+    section: "Observability",
+  },
+  LOG_FORMAT: {
+    schema: z.enum(["json", "gcp"]).default("json"),
+    description:
+      "How each log line is written. json: time, level and msg. gcp: time, severity and message, the fields Google Cloud Logging reads.",
     section: "Observability",
   },
   SENTRY_DSN: {

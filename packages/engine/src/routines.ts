@@ -311,9 +311,9 @@ export interface RoutineView {
   waitingFor: { machineId: string; machineName: string; since: string } | null;
   /**
    * Its run waits on its plan or budget (`usage_paused`): paused near the limit (ADR 0118) or stopped at it (`limit`).
-   * It picks up at `resetsAt` (null: not known yet). `extraOff`: a plan pause whose window is used up, on an agent whose switch keeps long work
-   * off paid extra usage, so Continuar agora is refused (`pauseContinuesPastPlan`); `extraUsedUp`: the same with the
-   * switch on but no extra usage left. Who may press it: `canManage`.
+   * It picks up at `resetsAt` (null: not known yet). `extraOff`: a plan pause whose window is used up, on an agent
+   * whose long work never uses paid extra usage (`paysExtraUsage`), so Continuar agora is refused
+   * (`pauseContinuesPastPlan`); `extraUsedUp`: the same with no extra usage left. Who may press it: `canManage`.
    */
   usagePause: {
     source: "plan" | "budget";
@@ -943,11 +943,13 @@ async function views(
     const lastRuns = recent.get(r.id) ?? [];
     const runs = recentViews(lastRuns, details, right.reads);
     // Its runs in progress: queued or being started (held emails are left out above), or whose agent run
-    // still works or waits (also after handing off).
+    // still works or waits. A run that already handed off is not at work: its report is out and the turn
+    // left of it (its own record) says nothing new for the routine, so only a wait of it shows.
     const open = lastRuns.filter((run) => {
       if (run.status === "queued" || run.status === "starting") return true;
       if (run.status !== "started" && run.status !== "reported") return false;
       const agentRun = run.agentRunId ? details.agentRuns.get(run.agentRunId) : undefined;
+      if (run.status === "reported") return agentWaiting(agentRun) || usageWaiting(agentRun);
       return AGENT_ACTIVE.has(agentRun?.status ?? "");
     });
     const openAgents = open.flatMap((run) => {

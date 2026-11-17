@@ -22,13 +22,12 @@ import Animated, { FadeIn } from "react-native-reanimated";
 import { useOrg } from "@/providers/org";
 import {
   Button,
-  Card,
+  GroupedHeader,
+  GroupedList,
+  GroupedRow,
   Icon,
   type IconName,
   InfoHint,
-  InkOrbit,
-  Row,
-  SectionHeader,
   Text,
   useReducedMotion,
   useToast,
@@ -349,16 +348,15 @@ export const ReceiptMark = memo(function ReceiptMark({
         {view.kind === "seen" ? (
           <Face who={{ type: "person", id: view.personId }} size={16} live={false} />
         ) : view.kind === "steer" ? (
-          // Beside the time, a 12 check: two once the agent read it, one while it waits; who read it is in the
-          // words a tap shows, never a face crowding the line.
+          // Beside the time, a 12 mark: two checks once the agent read it, one once it got it (one that waits for
+          // the next pause has no mark: `markOf`); who read it is in the words a tap shows, never a face crowding
+          // the line.
           view.state === "read" || view.state === "resolved" ? (
             <Icon name="checks" size={12} color={tint} />
           ) : view.state === "now" || view.state === "delivered" ? (
             <Icon name="check" size={12} color={tint} />
-          ) : view.state === "held" ? (
-            <Icon name="pause" size={12} color={tint} />
           ) : (
-            <InkOrbit size={10} color={tint} />
+            <Icon name="pause" size={12} color={tint} />
           )
         ) : view.mark === "none" && view.agentId ? (
           <Icon name="checks" size={12} color={tint} />
@@ -424,16 +422,16 @@ function ReceiptsSheet({
   return (
     <>
       <SheetTitle title={t("receipts.popoverTitle")} />
-      <Card>
+      <GroupedList>
         {rows.map((r) => (
-          <Row
+          <GroupedRow
             key={r.agentId}
             leading={<AgentFace agentId={r.agentId} size={30} live={false} />}
-            title={name(r.agentId)}
-            subtitle={t(phaseKey(r.phase, held))}
+            label={name(r.agentId)}
+            sub={t(phaseKey(r.phase, held))}
           />
         ))}
-      </Card>
+      </GroupedList>
       {by ? <Note icon={RULE_ICON[by.rule]}>{by.text}</Note> : null}
       {nobody ? (
         <Note icon="checks">
@@ -443,23 +441,24 @@ function ReceiptsSheet({
         </Note>
       ) : null}
       {callable.length > 0 ? (
-        <>
-          <SectionHeader title={t("channel.callAgent")} />
-          <Card>
+        // The header and its rows as one block of the sheet (its gap goes between blocks).
+        <View>
+          <GroupedHeader>{t("channel.callAgent")}</GroupedHeader>
+          <GroupedList>
             {callable.map((c) => (
-              <Row
+              <GroupedRow
                 key={c.agentId}
                 leading={<AgentFace agentId={c.agentId} size={30} live={false} />}
-                title={name(c.agentId)}
-                subtitle={`@${c.handle}`}
+                label={name(c.agentId)}
+                sub={`@${c.handle}`}
                 onPress={() => {
                   requestComposerText(m.channelId, `@${c.handle} `);
                   sheet.close();
                 }}
               />
             ))}
-          </Card>
-        </>
+          </GroupedList>
+        </View>
       ) : null}
       {mentionNeeded ? (
         <>

@@ -12,17 +12,21 @@ export interface Scene {
 }
 export type AppIconId = "night" | "moon" | "sky" | "peekNight" | "peekSky";
 export const APP_ICON_IDS: AppIconId[];
+export const PHONE_APP_ICON_ID: AppIconId;
 export const SCENES: Record<AppIconId, Scene>;
 export interface MadeIconSpec {
   sky: string;
   color: string;
   look: string;
+  /** "front" when left out. */
+  pose?: string;
 }
 export const MADE_SKIES: string[];
 export const MADE_COLORS: string[];
 export const MADE_FACES: string[];
 export const MADE_ACCESSORIES: string[];
 export const MADE_LOOKS: string[];
+export const MADE_POSES: string[];
 export function madeId(icon: MadeIconSpec): string;
 export function madeIcons(): MadeIconSpec[];
 export function madeScene(icon: MadeIconSpec): SceneLayer[];

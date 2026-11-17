@@ -59,8 +59,10 @@ import {
   setAvatar,
   setMyLocale,
   setMyWorkArea,
+  setOrgAccent,
   setOrgLogo,
   settleJoinRequests,
+  setWallpaperPhoto,
   signInOptions,
   soleOwnerRefusal,
   toldReason,
@@ -72,6 +74,7 @@ import {
   updateOrganization,
   updateOrgSettings,
   WORKSPACE_MODES,
+  wallpaperPhotoFile,
   workspaceContents,
   workspaceDeletions,
   workspaceMode,
@@ -80,6 +83,7 @@ import { createRoute, z } from "@hono/zod-openapi";
 import {
   authUiConfig,
   changeAccountEmail,
+  confirmsOnThisMac,
   deletionProof,
   deviceAccountsOf,
   mintPhoneSignIn,
@@ -111,7 +115,7 @@ import {
   requireSession,
   security,
 } from "./context";
-import { Invitation, Member, Organization, Role } from "./schemas";
+import { AccentColor, Invitation, Member, Organization, Role } from "./schemas";
 
 const tags = ["Account"];
 /** E-mail lookups on the sign-in screen: enough for typos and a few accounts, not for listing who has one. */
@@ -129,7 +133,7 @@ const Proof = z.object({
   password: z.string().min(1).max(128).optional(),
 });
 const PROOF_TEXT =
-  "Proof that it's you: the `code` emailed by `POST …/deletion/code` (403 `reauth.code` without one; `reauth.code_wrong`, `reauth.code_expired` or `reauth.code_tries` when refused, and 429 `reauth.code_limit` for every code once the account's 10 wrong tries of the day are spent; it works once, for this deletion only). On a server that sends no email, `password` instead (403 `reauth.password` without it or wrong, 429 after 5 in 15 minutes).";
+  "Proof that it's you: the `code` emailed by `POST …/deletion/code` (403 `reauth.code` without one; `reauth.code_wrong`, `reauth.code_expired` or `reauth.code_tries` when refused, and 429 `reauth.code_limit` for every code once the account's 10 wrong tries of the day are spent; it works once, for this deletion only). On a server that sends no email, `password` instead (403 `reauth.password` without it or wrong, 429 after 5 in 15 minutes), or nothing from the owner `GET /me` marks `confirmsOnThisMac` who signed in less than 10 minutes ago (403 `reauth.sign_in` past that).";
 const Sent = json(
   z.object({
     email: z.string().openapi({ description: "Where it went: the account's own address." }),
@@ -158,6 +162,10 @@ const Me = z
       }),
       emailVerified: z.boolean().openapi({
         description: "The person opened the link that confirms their email address.",
+      }),
+      confirmsOnThisMac: z.boolean().openapi({
+        description:
+          "A sign-in in the last 10 minutes is their proof before a deletion, with no password or code: the installation's owner on the desktop app's own server (an owner key, no email), whom the app signs in again with Continue on this Mac.",
       }),
       locale: z.string().nullable().openapi({
         description: "The app's language (`PATCH /me`); null until an app said one.",
@@ -201,15 +209,23 @@ const Created = z.object({
 /** Account, organizations, members and invitations. */
 export function accountRoutes(deps: AppDeps) {
   const { db, config } = deps;
+  /** What decides a deletion's proof, read when it's asked: whether this server sends email now. */
+  const proofDeps = () => ({
+    db,
+    rateLimiter: deps.adapters.rateLimiter,
+    emailDelivers: deps.adapters.email.delivers === true,
+    ownerKey: Boolean(config.OWNER_KEY_SHA256),
+  });
   /** `GET /me`'s body; null once the account is deleted. */
   const meBody = async (user: { id: string; name: string; email: string }): Promise<z.infer<typeof Me> | null> => {
-    const [memberships, password, verified, creates, unfinished, account] = await Promise.all([
+    const [memberships, password, verified, creates, unfinished, account, onThisMac] = await Promise.all([
       listMemberships(db, user.id),
       hasPassword(db, user.id),
       isEmailVerified(db, user.id),
       canCreateWorkspace(db, user.id, workspacePolicy(config)),
       unfinishedWorkspaces(db, user.id),
       myAccount(db, user.id),
+      confirmsOnThisMac(proofDeps(), user.id),
     ]);
     if (verified === null) return null;
     const onboardingOf = (orgId: string) => unfinished.find((u) => u.organization.id === orgId);
@@ -226,6 +242,7 @@ export function accountRoutes(deps: AppDeps) {
         image: account.image,
         hasPassword: password,
         emailVerified: verified,
+        confirmsOnThisMac: onThisMac,
         locale: account.locale,
         localeAuto: account.localeAuto,
         workArea: isWorkAreaAnswer(account.workArea) ? account.workArea : null,
@@ -249,6 +266,7 @@ export function accountRoutes(deps: AppDeps) {
           permissions: [...m.permissions],
           rank: m.rank,
           logo: m.orgLogo ?? null,
+          accent: m.orgAccent ?? null,
           ...(m.orgCreatedAt ? { createdAt: m.orgCreatedAt.toISOString() } : {}),
           ...(m.start ? { start: m.start } : {}),
           showActivity: m.showActivity ?? false,
@@ -292,16 +310,9 @@ export function accountRoutes(deps: AppDeps) {
     rateLimiter: deps.adapters.rateLimiter,
     emails: { publicUrl: config.PUBLIC_URL, support: config.SUPPORT_EMAIL },
   };
-  /** The proof a deletion takes (`deletionProof`), read when it's asked: whether this server sends email now. */
+  /** The proof a deletion takes (`deletionProof`). */
   const prove = (c: { req: { raw: Request } }, userId: string, orgId: string | null, proof: z.infer<typeof Proof>) =>
-    deletionProof(
-      deps.auth,
-      { db, rateLimiter: deps.adapters.rateLimiter, emailDelivers: deps.adapters.email.delivers === true },
-      c.req.raw.headers,
-      userId,
-      orgId,
-      proof,
-    );
+    deletionProof(deps.auth, proofDeps(), c.req.raw.headers, userId, orgId, proof);
   for (const path of [
     "/me",
     "/me/unread",
@@ -311,6 +322,7 @@ export function accountRoutes(deps: AppDeps) {
     "/account",
     "/account/*",
     "/avatars/*",
+    "/wallpapers/*",
     "/org-logos/*",
     "/organizations",
     "/organizations/*",
@@ -364,6 +376,10 @@ export function accountRoutes(deps: AppDeps) {
               description:
                 "The billing service (BILLING_URL, ADR 0079): owners and admins open a workspace's plan and billing there through `POST …/billing-link`. Null: no billing.",
             }),
+            referralsUrl: z.string().nullable().openapi({
+              description:
+                "The referral service (REFERRALS_URL, ADR 0192): a signed-in person opens it through `POST /api/app/referrals-link`. Null: no referrals.",
+            }),
             cloud: z.boolean().openapi({
               description:
                 "One of agentes.chat's own servers (`cloud` in `GET /api/instance`): the apps show no About screen there, which every other server shows.",
@@ -405,6 +421,7 @@ export function accountRoutes(deps: AppDeps) {
           passwordReset: deps.adapters.email.delivers === true,
           workspaceComputer: config.MACHINE_PROVISIONING === "external",
           billingUrl: config.BILLING_URL ?? null,
+          referralsUrl: config.REFERRALS_URL ?? null,
           cloud: isAgentesCloud(config.PUBLIC_URL),
           turnstileSiteKey: deps.adapters.humanCheck?.siteKey ?? null,
           errorReports: reportsTo(config.SENTRY_WEB_DSN),
@@ -1127,7 +1144,7 @@ export function accountRoutes(deps: AppDeps) {
         204: { description: "Scheduled; the session cookies are cleared" },
         400: errorResponse("A malformed code, or a wrong one (`reauth.code_wrong`)"),
         401: errors[401],
-        403: errorResponse("Blocked, or no proof that it's you (`reauth.code`, `reauth.password`)"),
+        403: errorResponse("Blocked, or no proof that it's you (`reauth.code`, `reauth.password`, `reauth.sign_in`)"),
         409: errorResponse(
           "Only owner of a workspace with others in it (`sole_owner`), or a code refused (`reauth.code_expired`, `reauth.code_tries`)",
         ),
@@ -1227,6 +1244,46 @@ export function accountRoutes(deps: AppDeps) {
     },
   );
 
+  app.openapi(
+    createRoute({
+      method: "put",
+      path: "/organizations/{orgId}/me/wallpaper-photo",
+      tags,
+      security,
+      summary: "Send a photo for a conversation's background (JPEG, PNG or WebP up to 2 MB; metadata is removed)",
+      description:
+        'Only you see it. The answer\'s `url` goes into a background (`{ kind: "photo", url, dim, x, y }`) with `PUT …/me/chat` or `PUT …/channels/{channelId}/wallpaper`; photos none of your backgrounds shows any more are removed when you send one. The apps shrink it first.',
+      request: {
+        params: OrgParams,
+        body: body(
+          z.object({
+            imageBase64: z
+              .string()
+              .min(1)
+              .max(3_000_000)
+              .openapi({ description: "The image bytes in base64 (a data: URL prefix is accepted)." }),
+            contentType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+          }),
+        ),
+      },
+      responses: {
+        200: json(z.object({ url: z.string() })),
+        429: errorResponse("Too many photos"),
+        ...errors,
+      },
+    }),
+    async (c) => {
+      const user = c.get("user");
+      await requirePermission(db, user.id, c.req.valid("param").orgId, "read");
+      const limit = await deps.adapters.rateLimiter.consume(`wallpaper:${user.id}`, { limit: 20, windowMs: 3600_000 });
+      if (!limit.allowed) return apiError(c, 429, "rate_limited", "Too many photos. Try again later.");
+      return c.json(
+        await setWallpaperPhoto({ db, blobs: deps.adapters.platformBlobs }, user.id, c.req.valid("json")),
+        200,
+      );
+    },
+  );
+
   // The workspace logo: an admin uploads it; every member sees it.
   app.openapi(
     createRoute({
@@ -1261,7 +1318,12 @@ export function accountRoutes(deps: AppDeps) {
       const limit = await deps.adapters.rateLimiter.consume(`org-logo:${orgId}`, { limit: 20, windowMs: 3600_000 });
       if (!limit.allowed) return apiError(c, 429, "rate_limited", "Too many logo changes. Try again later.");
       return c.json(
-        await setOrgLogo({ db, blobs: deps.adapters.platformBlobs }, user.id, orgId, c.req.valid("json")),
+        await setOrgLogo(
+          { db, blobs: deps.adapters.platformBlobs, pubsub: deps.adapters.pubsub },
+          user.id,
+          orgId,
+          c.req.valid("json"),
+        ),
         200,
       );
     },
@@ -1278,8 +1340,39 @@ export function accountRoutes(deps: AppDeps) {
       responses: { 204: noContent[204], ...errors },
     }),
     async (c) => {
-      await removeOrgLogo({ db, blobs: deps.adapters.platformBlobs }, c.get("user").id, c.req.valid("param").orgId);
+      await removeOrgLogo(
+        { db, blobs: deps.adapters.platformBlobs, pubsub: deps.adapters.pubsub },
+        c.get("user").id,
+        c.req.valid("param").orgId,
+      );
       return c.body(null, 204);
+    },
+  );
+
+  // The workspace's accent (ADR 0193): an admin picks it; every member's apps paint with it.
+  app.openapi(
+    createRoute({
+      method: "put",
+      path: "/organizations/{orgId}/accent",
+      tags,
+      security,
+      summary: "Set the workspace's accent color, or null for the default. Admins.",
+      request: { params: OrgParams, body: body(z.object({ accent: AccentColor.nullable() })) },
+      responses: {
+        200: json(z.object({ accent: AccentColor.nullable() })),
+        429: errorResponse("Too many accent changes (`rate_limited`)"),
+        ...errors,
+      },
+    }),
+    async (c) => {
+      const user = c.get("user");
+      const { orgId } = c.req.valid("param");
+      const { accent } = c.req.valid("json");
+      await requirePermission(db, user.id, orgId, "configure");
+      // Each change makes every member's open apps refetch.
+      const limit = await deps.adapters.rateLimiter.consume(`org-accent:${orgId}`, { limit: 20, windowMs: 3600_000 });
+      if (!limit.allowed) return apiError(c, 429, "rate_limited", "Too many color changes. Try again later.");
+      return c.json(await setOrgAccent({ db, pubsub: deps.adapters.pubsub }, user.id, orgId, accent), 200);
     },
   );
 
@@ -1290,6 +1383,18 @@ export function accountRoutes(deps: AppDeps) {
         { db, blobs: deps.adapters.platformBlobs },
         c.get("user").id,
         c.req.param("orgId"),
+        c.req.param("file"),
+      ),
+    ),
+  );
+
+  // A background's photo, for its owner only.
+  app.get("/wallpapers/:userId/:file", async (c) =>
+    imageFile(
+      await wallpaperPhotoFile(
+        { db, blobs: deps.adapters.platformBlobs },
+        c.get("user").id,
+        c.req.param("userId"),
         c.req.param("file"),
       ),
     ),
@@ -1442,6 +1547,7 @@ export function accountRoutes(deps: AppDeps) {
           // What the agents know of the workspace: only for who configures it.
           context: can(membership, "configure") ? (org?.context ?? "") : "",
           logo: org?.logo ?? null,
+          accent: org?.accent ?? null,
           mode: await workspaceMode(db, orgId),
         },
         200,

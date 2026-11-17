@@ -394,6 +394,7 @@ export const SUMMARY_ORDER: readonly RolePermission[] = [
   "own_computers",
   "own_browsers",
   "talk_to_agents",
+  "view_all_agents",
   "assign_work",
   "post",
   "create_channels",
@@ -541,6 +542,10 @@ export const removes = (
   person: Pick<Person, "userId" | "role" | "roleIds">,
   roles: readonly OrgRole[],
 ) => person.userId !== viewer.userId && can(viewer, "manage_members") && isBelow(viewer, person, roles);
+
+/** Who can be made an owner: not one already, nor an outside collaborator (`member.outside_owner`, ADR 0191). */
+export const ownerCandidates = <P extends Pick<Person, "role" | "outsideOf">>(people: readonly P[]) =>
+  people.filter((p) => p.role !== "owner" && !p.outsideOf);
 
 /** Whether the viewer may leave the workspace: anyone but its last owner. */
 export const leaves = (viewer: { role: string }, people: readonly Pick<Person, "role">[]) =>

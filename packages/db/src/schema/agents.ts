@@ -196,17 +196,26 @@ export const agents = pgTable(
      */
     approvalsLevel: text().$type<"always" | "risky" | "never">().notNull().default("risky"),
     /**
+     * Whether `approvals_level` is the agent's own choice. False: it follows the workspace's
+     * (`organization_settings.approvals_level`), copied here whenever that changes, so every reader keeps reading
+     * `approvals_level` alone.
+     */
+    approvalsLevelOwn: boolean().notNull().default(false),
+    /**
      * Who thinks for it (ADR 0032): `model` (the API, default), `claude_code`
      * or `codex` on its computer; validated in code (`brain-settings.ts`).
      */
     brain: text().notNull().default("model"),
     /** The computer brain's model (`opus`, `sonnet`, `haiku`, a Codex model); null = the brain's default. */
     brainModel: text(),
-    /** When the computer brain can't answer, answer through the API (counts against the budget). */
+    /**
+     * Unused (ADR 0032's 2026-11-15 addendum: the API never stands in for a computer brain). Kept while the previous
+     * release still reads it during a deploy and on rollback; a migration of a later release drops it.
+     */
     brainFallback: boolean().notNull().default(true),
     /**
-     * Long work may go on into the plan's paid extra usage, where the provider reports it on (ADR 0118); off, it
-     * pauses at 95% of the plan like any other.
+     * Never read (ADR 0118's 2026-11-15 addendum: paid extra usage follows the plan, `paysExtraUsage`). Kept and dropped
+     * as `brainFallback` is; until then written `false` where the previous release wrote it, which still reads it.
      */
     brainExtraUsage: boolean().notNull().default(true),
     /**
@@ -225,6 +234,11 @@ export const agents = pgTable(
      * the plan stays lent if that person leaves.
      */
     brainAccountLentBy: text(),
+    /**
+     * "Só esta conta" (ADR 0041 §6): at its plan's limit a run waits for this account to reset instead of going on
+     * with the next account in the workspace's order (`nextAccountPlan`).
+     */
+    brainAccountPinned: boolean().notNull().default(false),
     /** How hard its computer brain thinks (`low`…`max`, ADR 0041); null = the CLI's default. */
     brainEffort: text(),
     /**
@@ -403,6 +417,11 @@ export const organizationSettings = pgTable("organization_settings", {
   teamWatch: boolean().notNull().default(true),
   /** "Dar boas-vindas a quem entra": the right hand greets each person who joins, once. On without a row too. */
   welcomePeople: boolean().notNull().default(true),
+  /**
+   * How much the workspace's agents ask before acting (ADR 0173 addendum 2026-11-15): what every agent without its
+   * own choice (`agents.approvals_level_own`) uses. A workspace with no row here is at `risky`.
+   */
+  approvalsLevel: text().$type<"always" | "risky" | "never">().notNull().default("risky"),
   updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -421,7 +440,6 @@ export interface AgentSetup {
   account?: string | null;
   effort?: string | null;
   contextTokens?: number | null;
-  fallback?: boolean;
   /** Its Autonomia (`agents.mission_command_approval`); null: the default. */
   autonomy?: string | null;
 }

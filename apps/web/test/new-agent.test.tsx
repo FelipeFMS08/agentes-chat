@@ -66,7 +66,8 @@ const openBrain = async () => {
 };
 const chooseBrain = async (name: RegExp) => {
   await openBrain();
-  await click(screen().getByRole("option", { name }));
+  // Claude's own, not Command Code's same model.
+  await click(screen().getAllByRole("option", { name })[0] as HTMLElement);
 };
 const groupNames = (list: HTMLElement) =>
   within(list)
@@ -245,7 +246,7 @@ describe("Criar agente: steps", () => {
     const list = await openBrain();
     const [auto, ...rest] = within(list).getAllByRole("option");
     expect(auto?.getAttribute("aria-selected")).toBe("true");
-    const sonnet = screen().getByRole("option", { name: /^Claude Sonnet 5\.5/ });
+    const sonnet = screen().getAllByRole("option", { name: /^Claude Sonnet 5\.5/ })[0] as HTMLElement;
     expect(sonnet.getAttribute("aria-selected")).toBe("false");
     expect(rest.indexOf(sonnet)).toBeGreaterThanOrEqual(0);
     // Claude's models by what each is for, as on the agent's page; a model without a key can't be picked.
@@ -345,10 +346,11 @@ describe("Criar agente: steps", () => {
     expect(screen().queryByRole("group", { name: "Função" })).toBeNull();
     expect(screen().queryByRole("complementary", { name: "Prévia do agente" })).toBeNull();
     expect(screen().queryByRole("button", { name: /^Continuar/ })).toBeNull();
-    // Enter in its field reads what's there, never moves the steps on.
+    // The file sheet: Enter in its field reads what's there, never moves the steps on.
+    await click(screen().getByRole("button", { name: "Tenho um arquivo ou link" }));
     const field = screen().getByLabelText("Ou cole um link do GitHub ou a resposta do outro app");
     await press(field, "Enter");
-    expect(title()).toBe("Trazer agentes de outro app");
+    expect(screen().getByRole("dialog", { name: "Trazer de um arquivo ou link" })).toBeTruthy();
 
     // A pasted reply: planned, then Importar brings the agent, and the report links to it.
     const reply = {
@@ -377,6 +379,9 @@ describe("Criar agente: steps", () => {
     const pasted = `\`\`\`json\n${JSON.stringify(reply)}\n\`\`\``;
     await act(async () => fireEvent.paste(field, { clipboardData: { getData: () => pasted } }));
     await settle(10);
+    // Who comes, in the sheet; closing it leaves the full preview on the page.
+    await click(document.querySelector(".imp-sheet .hosting-sheet__close") as HTMLElement);
+    expect(title()).toBe("Trazer agentes de outro app");
     expect(screen().getByRole("heading", { name: "Minhas automações" })).toBeTruthy();
     await click(screen().getByRole("button", { name: /^Importar 1 / }));
     await settle(8);
@@ -662,21 +667,13 @@ describe("Criar agente: what gets created", () => {
     await click(screen().getByRole("button", { name: "Conectar uma IA" }));
     await settle(6);
     const box = screen().getByRole("dialog", { name: "Conectar uma IA" });
-    // A plan for the agent being made (never one of theirs): a computer to connect opens beside the draft.
+    // A plan for the agent being made (never one of theirs): a computer to connect opens in place, over the draft.
     await chooseAi(box, "Claude");
     const panel = within(box).getByRole("region", { name: "Seu plano do Claude" });
-    const opened: unknown[][] = [];
-    const realOpen = window.open;
-    window.open = ((...args: unknown[]) => {
-      opened.push(args);
-      return null;
-    }) as typeof window.open;
-    try {
-      await click(within(panel).getByRole("button", { name: "Conectar um computador" }));
-    } finally {
-      window.open = realOpen;
-    }
-    expect(opened).toEqual([[`/org/${ORG_ID}/settings/devices`, "_blank", "noopener"]]);
+    await click(within(panel).getByRole("button", { name: "Conectar um computador" }));
+    const pairing = screen().getByRole("dialog", { name: "Conectar um dispositivo" });
+    await click(within(pairing).getByRole("button", { name: "Fechar" }));
+    expect(screen().queryByRole("dialog", { name: "Conectar um dispositivo" })).toBeNull();
     await click(payWith(box, "Com chave de API"));
     await act(async () =>
       fireEvent.change(within(box).getByLabelText("Cole aqui"), {
@@ -1121,7 +1118,6 @@ describe("Criar agente: what gets created", () => {
       account: { id: "acc-1", label: "Claude", provider: null, mine: true, free: true },
       ownSignIn: false,
       effort: "high",
-      fallback: true,
     };
     await open(state);
     await startAs("Assistente");
@@ -1137,7 +1133,7 @@ describe("Criar agente: what gets created", () => {
     expect(state.calls.find((c) => c.method === "agents.setBrain")?.args).toEqual([
       ORG_ID,
       agentId,
-      { brain: "claude_code", account: "acc-1", model: "opus", effort: "high", contextTokens: null, fallback: true },
+      { brain: "claude_code", account: "acc-1", model: "opus", effort: "high", contextTokens: null },
     ]);
   });
 
@@ -1170,7 +1166,6 @@ describe("Criar agente: what gets created", () => {
       account: null,
       ownSignIn: true,
       effort: "high",
-      fallback: true,
     };
     const api = createFakeApi(state);
     fakeMachinesOf.get(api)?.setAiAccounts({
