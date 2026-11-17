@@ -13276,16 +13276,16 @@ export const ptBR = {
   connectFlow: {
     local: {
       transport: "Transporte MCP",
-      tab: "Local · stdio",
+      tab: "Programa local · stdio",
       where:
-        "Executa neste servidor: no seu computador na instalação desktop, dentro do contêiner no Docker. Um computador conectado a outro servidor não é usado aqui.",
-      checking: "Verificando o suporte a MCP local neste servidor…",
+        "Executa onde o agentes.chat está instalado: no seu computador na instalação desktop, dentro do contêiner no Docker. Um computador conectado a outro servidor não é usado aqui.",
+      checking: "Verificando o suporte a MCP local…",
       checkFailed: "Não foi possível verificar o suporte a MCP local. Reabra esta janela para tentar novamente.",
       disabled:
         "Programas locais estão desativados. O responsável pela instalação precisa habilitar MCP_STDIO_ENABLED em um servidor próprio confiável e fechado a cadastro público.",
       command: "Executável",
       commandHelp:
-        "Nome do programa ou caminho absoluto. Os argumentos ficam abaixo; nenhum comando de shell é interpretado.",
+        "Nome do programa ou caminho absoluto. Informe os argumentos separadamente. O programa inicia sem shell.",
       args: "Argumentos (lista JSON)",
       argsHelp:
         'Uma string por argumento, por exemplo ["server.js", "mcp"]. Caminhos com espaços ficam em uma única string.',
@@ -13294,11 +13294,11 @@ export const ptBR = {
       environment: "Variáveis de ambiente",
       env: "Ambiente (objeto JSON)",
       envHelp:
-        'Por exemplo {"API_KEY":"…"}. Armazenado criptografado; os segredos do próprio servidor não são herdados.',
+        'Por exemplo {"API_KEY":"…"}. Os valores são criptografados. O processo não herda os segredos do servidor.',
       invalid:
         "Informe um executável, uma lista JSON de argumentos de texto e um objeto JSON com os valores de ambiente em texto.",
       failed:
-        "Não foi possível conectar o MCP local. Confira o executável e os caminhos neste servidor e se o programa fala MCP por stdio.",
+        "Não foi possível conectar o MCP local. Confira o executável e os caminhos da instalação e se o programa fala MCP por stdio.",
       permissions:
         "Executa como o usuário do sistema do servidor. O acesso às ferramentas e as aprovações são definidos nas próximas etapas.",
     },
