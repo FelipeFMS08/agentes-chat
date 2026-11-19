@@ -2,7 +2,7 @@ import type { ConnectorDef } from "@agenteschat/client";
 import {
   keys,
   useAgentProposal,
-  useAgents,
+  useAllAgents,
   useCatalog,
   useChannels,
   useCreateAgent,
@@ -14,6 +14,7 @@ import {
   useSkills,
 } from "@agenteschat/client";
 import { type Level, saveLevels } from "@agenteschat/client/lib/access-levels";
+import { personalAllowed } from "@agenteschat/client/lib/connected";
 import { setDraftFor } from "@agenteschat/client/lib/drafts";
 import { errorText as failureText } from "@agenteschat/client/lib/errors";
 import { FIELD_LIMITS } from "@agenteschat/client/lib/field-limits";
@@ -394,7 +395,8 @@ function NewAgentDialog({
   const navigate = useNavigate();
   const personal = isPersonal(org);
   const managesAgents = can(org, "manage_agents");
-  const agents = useAgents(org.id);
+  // Every agent, unlisted ones too: a new one takes neither their names nor their handles.
+  const agents = useAllAgents(org.id);
   const members = useMembers(org.id);
   const catalog = useCatalog();
   const connected = useConnectedById();
@@ -1659,7 +1661,7 @@ function NewAgentDialog({
           }
           connected={new Set(connectedApps.keys())}
           onCard={new Set(appIds)}
-          canConnect={can(org, "manage_connectors")}
+          canConnect={(d) => can(org, "manage_connectors") || personalAllowed(d.id)}
           onUse={(d) => takeApp(d.id)}
           onConnect={connectApp}
           onClose={() => setPicking(false)}

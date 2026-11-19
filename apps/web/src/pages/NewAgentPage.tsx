@@ -1,7 +1,7 @@
 import type { Agent, AgentAudience } from "@agenteschat/client";
 import {
-  useAgents,
   useAiAccounts,
+  useAllAgents,
   useBrainMachines,
   useCatalog,
   useChannels,
@@ -37,7 +37,7 @@ import {
   newPlanAccountOption,
   planAccountOption,
 } from "@agenteschat/client/lib/brain-picker";
-import { type ConnectedItem, itemName } from "@agenteschat/client/lib/connected";
+import { type ConnectedItem, itemName, personalAllowed } from "@agenteschat/client/lib/connected";
 import { errorText as failureText } from "@agenteschat/client/lib/errors";
 import { FIELD_LIMITS } from "@agenteschat/client/lib/field-limits";
 import { joinNames } from "@agenteschat/client/lib/format";
@@ -260,7 +260,8 @@ function NewAgentFlow({ channelId = null }: { channelId?: string | null }) {
   const api = useApi();
   const members = useMembers(org.id);
   const roleList = useRoles(org.id);
-  const agents = useAgents(org.id);
+  // Every agent, unlisted ones too: a new one takes neither their names nor their handles.
+  const agents = useAllAgents(org.id);
   const models = useModels();
   const credentials = useCredentials(org.id);
   const channels = useChannels(org.id);
@@ -1907,7 +1908,7 @@ function NewAgentFlow({ channelId = null }: { channelId?: string | null }) {
           // Every connected app is a row of the step's list already.
           onCard={connectedApps}
           inList
-          canConnect={can(org, "manage_connectors")}
+          canConnect={(d) => can(org, "manage_connectors") || personalAllowed(d.id)}
           onUse={() => {}}
           onConnect={(def) => {
             keepForReturn();

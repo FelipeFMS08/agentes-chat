@@ -17,6 +17,7 @@ import {
   enqueueRightHandChecks,
   enqueueSkillUpdates,
   enqueueVaultSyncs,
+  enqueueWaitingResets,
   enqueueWaitlistContacts,
   expireAgentProposalAsks,
   expireApprovals,
@@ -46,6 +47,7 @@ import {
   pruneMessageClientIds,
   pruneOperatorEvents,
   pruneRoutineHookCalls,
+  pruneSurfaceRows,
   purgeApps,
   purgeDeletedArtifacts,
   purgeDeletedWikiPages,
@@ -329,6 +331,8 @@ export function startWorkers(deps: WorkerDeps) {
     // Old send ids (idempotent resends) are no longer needed.
     const pruned = await pruneMessageClientIds(db);
     if (pruned > 0) log.info("pruned message client ids", { pruned });
+    const surfaceRows = await pruneSurfaceRows(db);
+    if (surfaceRows > 0) log.info("pruned surface rows", { pruned: surfaceRows });
     const events = await pruneOperatorEvents(db);
     if (events > 0) log.info("pruned operator events", { pruned: events });
     const cleared = await clearOldOutboxPayloads(db);
@@ -345,8 +349,9 @@ export function startWorkers(deps: WorkerDeps) {
     await pruneEmailChanges(db);
     const accounts = await enqueueOverdueAccountDeletions(db);
     const due = await enqueueOverdueDeletions(db);
-    if (due + accounts > 0) {
-      log.info("workspace deletions due", { due, accounts });
+    const resets = await enqueueWaitingResets(db);
+    if (due + accounts + resets > 0) {
+      log.info("workspace deletions due", { due, accounts, resets });
       void ticks.get("outbox")?.();
     }
   });

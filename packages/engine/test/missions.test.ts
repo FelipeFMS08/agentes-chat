@@ -62,7 +62,6 @@ import {
   syncMissionFiles,
   systemWithConversation,
   taskNotice,
-  versionOf,
 } from "../src";
 import { addMember, type Fixture, setup } from "./fixtures";
 import { pairMachine } from "./machine-fixtures";
@@ -1027,6 +1026,25 @@ describe("missions (ADR 0029)", () => {
     await expect(requestToJoin(md(), zed.id, f.org.id, view.id)).rejects.toMatchObject({ code: "mission.not_found" });
   });
 
+  test("the workspace's computer asleep in standby: making a mission wakes it and goes on once it is back", async () => {
+    f = await setup({ machines: true, missionTools: true, brains: missionComputerBrain().brains });
+    const paired = await pairedMachine();
+    await f.db
+      .update(schema.machines)
+      .set({ kind: "managed", standbyAt: new Date() })
+      .where(eq(schema.machines.id, paired.machineId));
+    const made = createMission(md(), f.owner.id, f.org.id, {
+      agentId: f.agent.id,
+      channelId: f.general.id,
+      goal: "Build our mobile app",
+      title: "Mobile app",
+      repoDir: "app",
+    });
+    await new Promise((r) => setTimeout(r, 200));
+    await missionRunner(f.machineHub as MachineHub).hello(paired.token);
+    expect((await made).title).toBe("Mobile app");
+  });
+
   test("eligible agents: every agent, with a reason when it can't (no computer, commands off, old runner, audience); offline still eligible", async () => {
     f = await setup({ machines: true, missionTools: true });
     const elig = (userId = f.owner.id) => eligibleMissionAgents(md(), userId, f.org.id);
@@ -1042,7 +1060,6 @@ describe("missions (ADR 0029)", () => {
         ready: false,
         executors: [],
         defaultExecutor: null,
-        codexTooOld: false,
         commandApproval: "low_risk_auto",
       },
     ]);
@@ -1062,7 +1079,6 @@ describe("missions (ADR 0029)", () => {
         // An older runner that doesn't report its CLIs: Claude Code is assumed.
         executors: ["claude", "agent"],
         defaultExecutor: "claude",
-        codexTooOld: false,
         commandApproval: "low_risk_auto",
       },
     ]);
@@ -1173,7 +1189,7 @@ describe("missions (ADR 0029)", () => {
     expect(await ask(10)).toMatchObject({ ok: false, error: { code: "mission.rate_limited" } });
   });
 
-  test("hello stores the coding CLIs; Codex counts only from the minimum version; Claude Code is required to choose it", async () => {
+  test("hello stores the coding CLIs; Codex counts at any version; Claude Code is required to choose it", async () => {
     f = await setup({ machines: true, missionTools: true });
     const paired = await pairedMachine();
     const runner = missionRunner(f.machineHub as MachineHub);
@@ -1193,48 +1209,36 @@ describe("missions (ADR 0029)", () => {
     const [machine] = await f.db.select().from(schema.machines);
     expect(machine?.executors).toMatchObject({ codex: { version: "codex-cli 0.150.0" } });
     expect(machineExecutors(machine as typeof schema.machines.$inferSelect)).toEqual({
-      available: ["agent"],
-      codexTooOld: true,
+      available: ["codex", "agent"],
     });
-    expect(
-      machineExecutors({
-        protocol: 7,
-        execAllowed: true,
-        executors: { codex: { version: "codex-cli 0.163.0" }, detectedAt: "x" },
-      }).available,
-    ).toEqual(["codex", "agent"]);
+    // Whatever the version line says, even none: a run on a CLI that lacks a flag fails with the CLI's own error.
+    for (const version of [
+      "0.100.0",
+      "codex-cli 0.170.0",
+      "WARNING: proceeding, even though we could not update PATH",
+      "",
+    ]) {
+      expect(
+        machineExecutors({ protocol: 7, execAllowed: true, executors: { codex: { version }, detectedAt: "x" } })
+          .available,
+      ).toEqual(["codex", "agent"]);
+    }
     // Codex background tasks don't run on Windows yet: a mission there can't ask Codex for its items.
     const codexHere = {
       protocol: 7,
       execAllowed: true,
       executors: { codex: { version: "codex-cli 0.163.0" }, detectedAt: "x" },
     };
-    expect(missionExecutors({ ...codexHere, os: "windows" }).available).toEqual(["agent"]);
+    expect(missionExecutors({ ...codexHere, os: "windows" })).toEqual({ available: ["agent"] });
     expect(missionExecutors({ ...codexHere, os: "darwin" }).available).toEqual(["codex", "agent"]);
-    // The version as the runner reports it, read part by part (a long run of digits is no version).
-    expect(versionOf("codex-cli 0.163.0")).toEqual([0, 163, 0]);
-    expect(versionOf("0".repeat(5000))).toBeNull();
-    // No update makes it, so an old Codex there isn't worth an "update it".
-    const oldCodex = { codex: { version: "codex-cli 0.150.0" }, detectedAt: "x" };
-    expect(missionExecutors({ ...codexHere, executors: oldCodex, os: "windows" })).toEqual({
-      available: ["agent"],
-      codexTooOld: false,
-    });
-    await expect(
-      createMission(md(), f.owner.id, f.org.id, {
-        agentId: f.agent.id,
-        channelId: f.general.id,
-        goal: "Build",
-        executor: "codex",
-      }),
-    ).rejects.toMatchObject({ code: "mission.executor_outdated" });
+    // Without Claude Code there, a mission's default is our agent.
     const view = await createMission(md(), f.owner.id, f.org.id, {
       agentId: f.agent.id,
       channelId: f.general.id,
       goal: "Build",
     });
     expect(view.executor).toBe("agent");
-    expect(view.machine?.executors).toEqual(["agent"]);
+    expect(view.machine?.executors).toEqual(["codex", "agent"]);
   });
 
   test("Codex on a Windows computer: asking it for a mission's items says it doesn't run there, not to update", async () => {

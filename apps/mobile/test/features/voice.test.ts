@@ -241,14 +241,14 @@ describe("a voice note with typed text and files", () => {
     );
     const bar = src("features/voice/useVoiceComposer.tsx");
     expect(bar).toContain('const trash = control("trash", t("voice.delete"), () => void take.cancel(true));');
-    expect(bar).toContain("send: locked || paused ? take.send : null");
+    expect(bar).toContain("send: (locked || paused) && !folding ? take.send : null,");
     // The swipe to cancel on the held mic is unchanged.
     expect(bar).toContain('if (intent === "cancel") scheduleOnRN(take.cancel, true);');
   });
 
   test("sending uploads the waiting files first, and a failed upload keeps the take", () => {
     const screen = src("features/chat/ChatScreen.tsx");
-    expect(screen).toMatch(/const withVoice = async \(text: string\) => \{[\s\S]{0,200}uploadPending\(pending\)/);
+    expect(screen).toMatch(/const withVoice = async \(typed: string\) => \{[\s\S]{0,600}uploadPending\(pending\)/);
     expect(screen).toContain("prepare: prepareVoice,");
     const take = src("features/voice/useVoiceTake.ts");
     expect(take).toMatch(/if \(!extra\) \{\s*await held\(\);\s*return false;/);

@@ -436,6 +436,16 @@ describe("Criar agente: steps", () => {
     expect(title()).toBe("O que a Ada Maria faz");
   });
 
+  test("someone else's private Ada, unlisted to me, still holds @ada: Dev starts as @ada-2's suggestion", async () => {
+    const state = seedState();
+    meWithRole(state, ["create_agents"]);
+    const ada = state.agents.find((a) => a.handle === "ada");
+    if (ada) Object.assign(ada, { ownerUserId: "u-other", audience: { mode: "owner", userIds: [] } });
+    await open(state);
+    await startAs("Dev");
+    expect(document.body.textContent).toContain("@ada já é de outro agente ou pessoa. Que tal @ada-2?");
+  });
+
   test("an empty name and @ only complain after trying to go on", async () => {
     await open();
     await startAs("Do zero");
@@ -1006,18 +1016,13 @@ describe("Criar agente: what gets created", () => {
     await startAs("Assistente");
     await proceed(4);
     const list = await openBrain();
-    expect(optionsIn(list, "OpenCode Go")).toHaveLength(32);
+    expect(optionsIn(list, "OpenCode Go")).toHaveLength(33);
     await typeIn(screen().getByRole("combobox", { name: "Buscar modelos" }), "free");
     expect(
       within(list)
         .getAllByRole("option")
         .map((o) => o.textContent),
-    ).toEqual([
-      "LongCat 2.5 FreeGrátis",
-      "Beam FreeGrátis",
-      "Crouton Alpha FreeGrátis",
-      "Iceman Contributor FreeGrátis",
-    ]);
+    ).toEqual(["LongCat 2.5 FreeGrátis", "Hy4 Flash FreeGrátis", "Beam FreeGrátis", "Iceman Contributor FreeGrátis"]);
     await typeIn(screen().getByRole("combobox", { name: "Buscar modelos" }), "deepseek flash");
     await click(screen().getByRole("option", { name: /^DeepSeek V4\.1 Flash/ }));
     expect(brainBox().textContent).toStartWith("DeepSeek V4.1 Flash pelo OpenCode Go");

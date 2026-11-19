@@ -2,14 +2,15 @@ import { type Message, useIssue } from "@agenteschat/client";
 import { type HandedTask, handedTasksOf, type IssueWorkRef, issueTakenOf } from "@agenteschat/client/lib/issues";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, View } from "react-native";
-import { CARD_PAD, EventPill, Icon, PressScale, Text, TOUCH } from "@/ui";
+import { CARD_PAD, Disclosure, EventPill, Icon, PressScale, Text, TOUCH } from "@/ui";
 import { router } from "@/ui/navigation";
 import { StateChip } from "../issues/parts";
 import { chatHref } from "../links/logic";
 import { AgentFace } from "../shared/Face";
 import { useColors, useDirectory, useMeId, useOrgId, useWhen } from "../shared/hooks";
 import { useSurface } from "../shared/parts";
-import { useCardTop, useQuietInset } from "./look";
+import { usePresenceOf } from "../status/hooks";
+import { useCardTop, useMessageCardCorners, useQuietInset } from "./look";
 
 /**
  * "Ask Ada to implement" (as on the web): the root of the work thread in the
@@ -17,6 +18,7 @@ import { useCardTop, useQuietInset } from "./look";
  * issue"); the agent's instructions never show in the chat.
  */
 export function IssueWorkCard({ work, authorId }: { work: IssueWorkRef; authorId: string | null }) {
+  const cardCorners = useMessageCardCorners();
   const { t } = useTranslation();
   const c = useColors();
   const cardTop = useCardTop();
@@ -35,7 +37,7 @@ export function IssueWorkCard({ work, authorId }: { work: IssueWorkRef; authorId
       accessibilityHint={t("chat.issueWork.view")}
       // The card's own size: the press area never grows past it.
       fill={false}
-      style={[styles.cardBox, surface, cardTop]}
+      style={[styles.cardBox, surface, cardCorners, cardTop]}
       contentStyle={styles.card}
     >
       <View style={styles.head}>
@@ -53,7 +55,7 @@ export function IssueWorkCard({ work, authorId }: { work: IssueWorkRef; authorId
         <Text variant="small" tone="ink2" style={styles.bold}>
           {t("chat.issueWork.view")}
         </Text>
-        <Icon name="right" size={15} color={c.faint} />
+        <Disclosure />
       </View>
     </PressScale>
   );
@@ -112,6 +114,8 @@ function HandedTaskChip({ task }: { task: HandedTask }) {
   const issue = useIssue(orgId, task.number);
   const current = issue.data?.id === task.issueId ? issue.data : null;
   const agent = dir.agentById.get(task.agentId);
+  // A chip's face lives only while its agent works: still, it costs nothing as the conversation scrolls.
+  const working = usePresenceOf().agent(task.agentId)?.presence === "working";
   const title = current?.title ?? task.title;
   return (
     <PressScale
@@ -128,7 +132,7 @@ function HandedTaskChip({ task }: { task: HandedTask }) {
       <Text variant="small" tone="ink" style={[styles.fit, styles.bold]} numberOfLines={1}>
         #{task.number} {title}
       </Text>
-      {agent ? <AgentFace agentId={agent.id} size={18} /> : null}
+      {agent ? <AgentFace agentId={agent.id} size={18} live={working} /> : null}
       {current ? <StateChip issue={current} /> : null}
     </PressScale>
   );

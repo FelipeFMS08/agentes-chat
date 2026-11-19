@@ -5,6 +5,7 @@ import {
   type GifProvider,
   type PubSub,
   type RateLimiter,
+  retryInSeconds,
 } from "@agenteschat/adapters";
 import { and, type Database, desc, eq, gte, inArray, isNull, lte, or, schema, sql } from "@agenteschat/db";
 import {
@@ -18,7 +19,7 @@ import {
 } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { type Agent, listAgents } from "../agents";
-import { audienceError, canTalkTo, speakerOf } from "../audience";
+import { audienceError, canTalkTo, listsAgentTo, speakerOf } from "../audience";
 import { recordAudit } from "../audit";
 import { listChannels, requireChannelAccess } from "../channels";
 import { stubOf, threadIsConfidential } from "../confidential";
@@ -652,7 +653,7 @@ export function buildAppsMcpServer(deps: AppsToolDeps, p: AppPrincipal, version:
         const r = await deps.rateLimiter.consume(`mcp:send:${i}:${p.userId}:${p.orgId}`, rule);
         if (!r.allowed)
           throw new AppToolError("Too many messages sent from apps. Try again later.", {
-            retry_after: Math.max(1, Math.ceil((r.resetAt.getTime() - Date.now()) / 1000)),
+            retry_after: retryInSeconds(r.resetAt),
           });
       }
       const agent = await resolveAgent(deps, p, args.agent);
@@ -750,8 +751,8 @@ export function buildAppsMcpServer(deps: AppsToolDeps, p: AppPrincipal, version:
     async (args) => {
       const membership = await getMembership(deps.db, p.userId, p.orgId);
       const talks = speakerOf(membership);
-      const all = (await listAgents(deps.db, p.userId, p.orgId)).filter((a) =>
-        matches(args.query, a.name, a.handle, a.role),
+      const all = (await listAgents(deps.db, p.userId, p.orgId)).filter(
+        (a) => listsAgentTo(a, p.userId, membership) && matches(args.query, a.name, a.handle, a.role),
       );
       const { slice, next_cursor } = page(all, args.cursor, args.limit, `agents:${args.query ?? ""}`);
       return {

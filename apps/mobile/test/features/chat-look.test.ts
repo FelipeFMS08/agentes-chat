@@ -9,6 +9,7 @@ import {
 } from "@agenteschat/client/lib/chat-look";
 import { AGENT_GRADIENTS, type AgentColorName, contrastOf, gradientOf, mixHex } from "@agenteschat/ui/agent/engine";
 import {
+  BUBBLES_EDGE,
   BUBBLES_INSET,
   bubbleFill,
   CHAT_TEXT,
@@ -102,12 +103,15 @@ describe("the rows follow the same choice as the web", () => {
     );
     expect(chat).toContain("band.current = { top: hasPin ? 0 : headerHeight, lift };");
     // The list shows once it is there, never its end first, and with the rows that load beside the messages (the
-    // threads' links, the agents' questions) already in: none grows under the person. Its fallback still shows it.
-    // Messages already on the phone show at once, never held behind those two reads.
+    // threads' links, the agents' questions) already in: none grows under the person. Those two hold it at most
+    // `ROWS_WAIT_MS` once the messages are in; its fallback still shows it. Messages already on the phone show at once,
+    // never held behind those two reads.
     expect(chat).toContain("onReady={onListReady}");
-    expect(chat).toContain(
-      "if (listReady.current && atReadDone.current && !goingToLine.current && rowsCompleteRef.current) revealList();",
+    expect(chat).toMatch(
+      /if \(\s*listReady\.current &&\s*atReadDone\.current &&\s*!goingToLine\.current &&\s*\(rowsCompleteRef\.current \|\| rowsWaitOver\.current\)\s*\)\s*revealList\(\);/,
     );
+    expect(chat).toContain("const ROWS_WAIT_MS = 200;");
+    expect(chat).toMatch(/rowsWaitOver\.current = true;\s*revealOpened\(\);\s*\}, ROWS_WAIT_MS\);/);
     expect(chat).toMatch(
       /const rowsComplete =\s*openedOnPhone \|\| \(\(isThread \|\| !readable \|\| channelThreads\.isFetched\) && consultations\.isFetched\);/,
     );
@@ -118,9 +122,11 @@ describe("the rows follow the same choice as the web", () => {
 
   test("a DM whose sides say who spoke has no face: its bodies and quiet rows start at the rows' own padding", () => {
     const dm = (style: "comfortable" | "bubbles") => ({ style, faces: facesShown(style, true) });
-    expect(rowBodyInset(dm("bubbles"))).toEqual({ left: BUBBLES_INSET, right: ROW_BODY_INSET.bubbles.right });
+    expect(rowBodyInset(dm("bubbles"))).toEqual({ left: BUBBLES_EDGE, right: ROW_BODY_INSET.bubbles.right });
     expect(rowBodyInset(dm("comfortable"))).toEqual({ left: MSG_INSET, right: ROW_BODY_INSET.comfortable.right });
-    expect(quietInset(dm("bubbles"))).toBe(BUBBLES_INSET);
+    expect(quietInset(dm("bubbles"))).toBe(BUBBLES_EDGE);
+    // With faces (a channel) the face keeps its own inset; with none the bubble stands where mine end on the other side.
+    expect(BUBBLES_INSET).toBeLessThan(BUBBLES_EDGE);
     expect(quietInset(dm("comfortable"))).toBe(MSG_INSET);
     // A channel, and a DM in a look with everyone on the left, keep the face and the words' column.
     for (const style of ["comfortable", "bubbles", "left", "compact"] as const) {
@@ -133,6 +139,8 @@ describe("the rows follow the same choice as the web", () => {
   test("the look says it, and every row with a face column and every quiet row reads it", async () => {
     expect(await read("chat/look.ts")).toContain("faces: facesShown(style, dm)");
     expect(await read("chat/look.ts")).toContain("paddingLeft: BUBBLES_INSET");
+    expect(await read("chat/look.ts")).toContain("bubblesBare: { paddingLeft: BUBBLES_EDGE },");
+    expect(await read("chat/MessageRow.tsx")).toContain("bubbled && !look.faces && lookRows.bubblesBare,");
     expect(await read("chat/MessageRow.tsx")).toContain("{look.faces ? (");
     const queue = await read("queue/parts.tsx");
     expect(queue).toContain("{faces ? (");

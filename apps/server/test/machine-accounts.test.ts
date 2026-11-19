@@ -155,6 +155,7 @@ test("accounts on a computer: the runner's list, signing in with a sealed code, 
         providerOrgId: null,
         serves: "everyone",
         useOrder: null,
+        sameAs: OLD_ACCOUNT,
         // A login for one agent is never a next account.
         movable: false,
       },
@@ -391,7 +392,7 @@ test("AI accounts see Codex become available after an executor update on the sam
       type: "hello",
       token,
       ...computer,
-      executors: report("0.149.0"),
+      executors: {},
       accounts: [{ id: OLD_ACCOUNT, kind: "codex", loggedIn: true }],
     }),
   );
@@ -406,18 +407,16 @@ test("AI accounts see Codex become available after an executor update on the sam
       {
         machineId,
         brains: { codex: false },
-        off: { codex: "outdated" },
-        codexVersion: { detected: "0.149.0", minimum: "0.163.0" },
+        off: { codex: "not_installed" },
       },
     ],
   });
-  await hub.message(conn, JSON.stringify({ type: "executors.changed", executors: report("0.169.0") }));
+  await hub.message(conn, JSON.stringify({ type: "executors.changed", executors: report("0.100.0") }));
   const updated = await read();
   expect(updated).toMatchObject({
     accounts: [{ id: OLD_ACCOUNT, machineId }],
     computers: [{ machineId, brains: { codex: true } }],
   });
-  expect(updated.computers[0]).not.toHaveProperty("codexVersion");
 });
 
 test("Contas de IA: the caller's own accounts with their computer, and where they can add one; an unknown plan is refused", async () => {

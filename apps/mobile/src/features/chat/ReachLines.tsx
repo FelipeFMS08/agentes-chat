@@ -4,7 +4,6 @@ import {
   type ForeignMailbox,
   type Message,
   useChannels,
-  useRoles,
   useWidenAudience,
 } from "@agenteschat/client";
 import {
@@ -26,11 +25,12 @@ import { useTranslation } from "react-i18next";
 import { Alert, StyleSheet, View } from "react-native";
 import { useOrg } from "@/providers/org";
 import { Button, LineIcon, ROW_CARD_INSET, RowAction, Text, useTheme, useToast } from "@/ui";
-import { useDirectory, useMeId, useOrgId } from "../shared/hooks";
+import { useOrgId } from "../shared/hooks";
 import { tapHaptic } from "../shared/parts";
 import { boldRuns } from "./actions";
 import { ConsultPairRow, useConsultById } from "./ConsultGroup";
-import { useCardTop, useRhythm } from "./look";
+import { useCardTop, useMessageCardCorners, useRhythm } from "./look";
+import { useRowDirectory, useRowMeId, useRowRoles } from "./row-data";
 
 const LIST_GAP = 8;
 
@@ -68,8 +68,9 @@ function Row({
   const { t } = useTranslation();
   const rhythm = useRhythm();
   const { colors } = useTheme();
+  const cardCorners = useMessageCardCorners();
   const orgId = useOrgId();
-  const dir = useDirectory();
+  const dir = useRowDirectory();
   const channel = useChannels(orgId).data?.find((c) => c.id === channelId);
   // A DM isn't in the channel list: "in this conversation".
   const place = channel ? t("reach.inChannel", { name: channel.name }) : t("reach.inHere");
@@ -99,7 +100,7 @@ function Row({
       />
     );
   return (
-    <View style={[styles.one, { backgroundColor: colors.raised, borderColor: colors.line2 }]}>
+    <View style={[styles.one, { backgroundColor: colors.raised, borderColor: colors.line2 }, cardCorners]}>
       <View style={styles.head}>
         <LineIcon name={handed ? "chat" : "info"} size={15} color={colors.muted} variant="small" />
         <View style={styles.words}>
@@ -140,8 +141,8 @@ export function AllowTalkAction({ agent, userId }: { agent: Agent; userId: strin
   const { t } = useTranslation();
   const orgId = useOrgId();
   const { org } = useOrg();
-  const me = useMeId();
-  const dir = useDirectory();
+  const me = useRowMeId();
+  const dir = useRowDirectory();
   const toast = useToast();
   const save = useWidenAudience(orgId, agent.id);
   const ask = useWidenAsk(agent);
@@ -176,7 +177,7 @@ export function LetMeTalkButton({ agent }: { agent: Agent }) {
   const { t } = useTranslation();
   const orgId = useOrgId();
   const { org } = useOrg();
-  const me = useMeId();
+  const me = useRowMeId();
   const toast = useToast();
   const save = useWidenAudience(orgId, agent.id);
   const ask = useWidenAsk(agent);
@@ -210,8 +211,8 @@ export function LetMeTalkButton({ agent }: { agent: Agent }) {
  */
 export function AgentLocked({ agent }: { agent: Agent }) {
   const { t } = useTranslation();
-  const dir = useDirectory();
-  const roles = useRoles(useOrgId()).data?.roles;
+  const dir = useRowDirectory();
+  const roles = useRowRoles();
   const notice = audienceNotice(
     t,
     agent,
@@ -235,8 +236,8 @@ export function AgentLocked({ agent }: { agent: Agent }) {
 export function UnavailableLines({ notices }: { notices: AgentUnavailableEvent[] }) {
   const { t } = useTranslation();
   const { colors } = useTheme();
-  const dir = useDirectory();
-  const roles = useRoles(useOrgId()).data?.roles;
+  const dir = useRowDirectory();
+  const roles = useRowRoles();
   if (notices.length === 0) return null;
   return (
     <View style={styles.unavailable} accessibilityLiveRegion="polite">
@@ -265,8 +266,8 @@ export function UnavailableLines({ notices }: { notices: AgentUnavailableEvent[]
  */
 export function useWidenAsk(agent: Agent | undefined) {
   const { t } = useTranslation();
-  const dir = useDirectory();
-  const me = useMeId();
+  const dir = useRowDirectory();
+  const me = useRowMeId();
   return (next: AgentAudience) =>
     (mailboxes: ForeignMailbox[]): Promise<boolean> => {
       if (!agent) return Promise.resolve(true);
